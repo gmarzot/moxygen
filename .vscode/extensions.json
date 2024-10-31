@@ -1,0 +1,9 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools-extension-pack",
+        "matepek.vscode-catch2-test-adapter",
+        "visualstudioexptteam.vscodeintellicode",
+        "ms-vscode.makefile-tools"
+        // Add extension IDs here
+    ]
+}
