@@ -144,7 +144,7 @@ folly::Expected<ClientSetup, ErrorCode> parseClientSetup(
     return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
   }
   length -= numVersions->second;
-  for (auto i = 0; i < numVersions->first; i++) {
+  for (auto i = 0ul; i < numVersions->first; i++) {
     auto version = quic::decodeQuicInteger(cursor, length);
     if (!version) {
       return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
@@ -192,12 +192,6 @@ folly::Expected<ObjectHeader, ErrorCode> parseObjectHeader(
     folly::io::Cursor& cursor,
     size_t length) noexcept {
   ObjectHeader objectHeader;
-  auto subscribeID = quic::decodeQuicInteger(cursor, length);
-  if (!subscribeID) {
-    return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
-  }
-  length -= subscribeID->second;
-  objectHeader.subscribeID = subscribeID->first;
   auto trackAlias = quic::decodeQuicInteger(cursor, length);
   if (!trackAlias) {
     return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
@@ -252,12 +246,8 @@ folly::Expected<ObjectHeader, ErrorCode> parseStreamHeader(
       streamType == StreamType::STREAM_HEADER_SUBGROUP);
   auto length = cursor.totalLength();
   ObjectHeader objectHeader;
-  auto subscribeID = quic::decodeQuicInteger(cursor, length);
-  if (!subscribeID) {
-    return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
-  }
-  length -= subscribeID->second;
-  objectHeader.subscribeID = subscribeID->first;
+  objectHeader.group = std::numeric_limits<uint64_t>::max(); // unset
+  objectHeader.id = std::numeric_limits<uint64_t>::max();    // unset
   auto trackAlias = quic::decodeQuicInteger(cursor, length);
   if (!trackAlias) {
     return folly::makeUnexpected(ErrorCode::PARSE_UNDERFLOW);
@@ -279,6 +269,7 @@ folly::Expected<ObjectHeader, ErrorCode> parseStreamHeader(
     length -= subgroup->second;
     objectHeader.forwardPreference = ForwardPreference::Subgroup;
   } else {
+    objectHeader.subgroup = std::numeric_limits<uint64_t>::max();
     objectHeader.forwardPreference = ForwardPreference::Track;
   }
   // TODO: 8 uint 8?
@@ -1166,7 +1157,6 @@ WriteResult writeStreamHeader(
   } else {
     LOG(FATAL) << "Unsupported forward preference to stream header";
   }
-  writeVarint(writeBuf, objectHeader.subscribeID, size, error);
   writeVarint(writeBuf, objectHeader.trackAlias, size, error);
   if (objectHeader.forwardPreference == ForwardPreference::Subgroup) {
     writeVarint(writeBuf, objectHeader.group, size, error);
@@ -1204,7 +1194,6 @@ WriteResult writeObject(
         folly::to_underlying(StreamType::OBJECT_DATAGRAM),
         size,
         error);
-    writeVarint(writeBuf, objectHeader.subscribeID, size, error);
     writeVarint(writeBuf, objectHeader.trackAlias, size, error);
   }
   if (objectHeader.forwardPreference != ForwardPreference::Subgroup) {
@@ -1213,7 +1202,7 @@ WriteResult writeObject(
   writeVarint(writeBuf, objectHeader.id, size, error);
   CHECK(
       objectHeader.status != ObjectStatus::NORMAL ||
-      objectHeader.length && *objectHeader.length > 0)
+      (objectHeader.length && *objectHeader.length > 0))
       << "Normal objects require non-zero length";
   if (objectHeader.forwardPreference == ForwardPreference::Datagram) {
     writeBuf.append(&objectHeader.priority, 1);
@@ -1756,8 +1745,7 @@ std::ostream& operator<<(std::ostream& os, ObjectStatus status) {
 }
 
 std::ostream& operator<<(std::ostream& os, const ObjectHeader& header) {
-  os << "subscribeID=" << header.subscribeID
-     << " trackAlias=" << header.trackAlias << " group=" << header.group
+  os << " trackAlias=" << header.trackAlias << " group=" << header.group
      << " subgroup=" << header.subgroup << " id=" << header.id
      << " priority=" << uint32_t(header.priority)
      << " forwardPreference=" << uint32_t(header.forwardPreference)
