@@ -1,15 +1,26 @@
 {
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compilerPath": "/usr/bin/g++-13",
+    "C_Cpp.intelliSenseEngine": "Tag Parser",
     "cmake.configureOnOpen": false,
     "cmake.configureOnEdit": false,
     "cmake.automaticReconfigure": false,
     "cmake.buildBeforeRun": false,
     "cmake.buildTask": false,
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    "C_Cpp.default.compilerPath": "/usr/bin/g++-13",
-    "C_Cpp.intelliSenseEngine": "Tag Parser",
     "cmake.deleteBuildDirOnCleanConfigure": false,
-    "testMate.cpp.test.executables": "{build,Build,BUILD,out,Out,OUT,moxygen}/**/*{test,Test,TEST}*",
     "files.associations": {
         "chrono": "cpp"
-    }
+    },
+    
+    // C++ test configuration
+    "testMate.cpp.test.executables": "moxygen/test/*{MoQTests,MoQSessionTest}*",
+    
+    // Python test configuration
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.cwd": "${workspaceFolder}/moxygen/test",
+    "python.testing.pytestPath": "${workspaceFolder}/.venv/bin/pytest",
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
 }

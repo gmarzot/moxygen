@@ -416,6 +416,15 @@ function setup_proxygen() {
   cd "$BWD" || exit
 }
 
+function setup_cython_env() {
+  echo -e "${COLOR_GREEN}[ INFO ] Setting up Cython environment ${COLOR_OFF}"
+  pip3 install --upgrade pip
+  pip3 install --upgrade setuptools
+  pip3 install --upgrade Cython
+  pip3 install --upgrade numpy
+  echo -e "${COLOR_GREEN}Cython environment is set up ${COLOR_OFF}"
+}
+
 # Parse args
 JOBS=8
 INSTALL_DEPENDENCIES=true
@@ -504,6 +513,8 @@ MAYBE_BUILD_SHARED_LIBS=""
 MAYBE_BUILD_TESTS="-DBUILD_TESTS=ON"
 if [ "$NO_BUILD_TESTS" == true ] ; then
   MAYBE_BUILD_TESTS="-DBUILD_TESTS=OFF"
+elif [ "WITH_CYTHON_TESTS" == true ] ; then
+  setup_cython_env
 fi
 if [ "$BUILD_FOR_FUZZING" == true ] ; then
   MAYBE_BUILD_FUZZERS="-DBUILD_FUZZERS=ON"
