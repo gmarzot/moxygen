@@ -12,8 +12,13 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "--cert"
-            ]
+                "--cert", "${workspaceFolder}/certs/certificate.pem",
+                "--key", "${workspaceFolder}/certs/certificate.key",
+                "--namespace", "test",
+                "--track", "video1",
+                "--start-group", "0",
+                "--start-object", "0",
+                "--log-level", "DEBUG"            ]
         }
     ]
 }
