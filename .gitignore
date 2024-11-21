@@ -25,5 +25,6 @@ package.json
 package-lock.json
 DartConfiguration.tcl
 moxygen/test/
+.venv/
 !moxygen/test/python/
 !moxygen/test/python/**
