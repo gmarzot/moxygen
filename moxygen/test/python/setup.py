@@ -22,14 +22,5 @@ setup(
             'linetrace': True,
             'profile': True
         }
-    ),
-    # options={
-    #     'build': {
-    #         'build_lib': "build",
-    #         'build_temp': "build"
-    #     },
-    #     'build_ext': {
-    #         'build_lib': "build"
-    #     }
-    # }
+    )
 )

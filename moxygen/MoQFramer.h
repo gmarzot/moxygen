@@ -11,6 +11,7 @@
 #include <folly/hash/Hash.h>
 #include <folly/io/Cursor.h>
 #include <folly/io/IOBufQueue.h>
+#include <folly/logging/xlog.h>
 
 #include <quic/codec/QuicInteger.h>
 #include <vector>
@@ -180,8 +181,73 @@ enum class ObjectStatus : uint64_t {
 
 std::ostream& operator<<(std::ostream& os, ObjectStatus type);
 
+struct TrackAlias {
+  /* implicit */ TrackAlias(uint64_t v) : value(v) {}
+  TrackAlias() = default;
+  uint64_t value{0};
+  bool operator==(const TrackAlias& a) const {
+    return value == a.value;
+  }
+  struct hash {
+    size_t operator()(const TrackAlias& a) const {
+      return std::hash<uint64_t>{}(a.value);
+    }
+  };
+};
+std::ostream& operator<<(std::ostream& os, TrackAlias alias);
+
+struct SubscribeID {
+  /* implicit */ SubscribeID(uint64_t v) : value(v) {}
+  SubscribeID() = default;
+  uint64_t value{0};
+  bool operator==(const SubscribeID& s) const {
+    return value == s.value;
+  }
+  struct hash {
+    size_t operator()(const SubscribeID& s) const {
+      return std::hash<uint64_t>{}(s.value);
+    }
+  };
+};
+std::ostream& operator<<(std::ostream& os, SubscribeID id);
+
+struct UnitializedIdentifier {
+  bool operator==(const UnitializedIdentifier&) const {
+    return false;
+  }
+};
+using TrackIdentifier =
+    std::variant<UnitializedIdentifier, TrackAlias, SubscribeID>;
+struct TrackIdentifierHash {
+  size_t operator()(const TrackIdentifier& trackIdentifier) const {
+    XCHECK_GT(trackIdentifier.index(), 0);
+    auto trackAlias = std::get_if<TrackAlias>(&trackIdentifier);
+    if (trackAlias) {
+      return folly::hash::hash_combine(
+          trackIdentifier.index(), trackAlias->value);
+    } else {
+      return folly::hash::hash_combine(
+          trackIdentifier.index(),
+          std::get<SubscribeID>(trackIdentifier).value);
+    }
+  }
+};
+
+inline uint64_t value(const TrackIdentifier& trackIdentifier) {
+  return std::visit(
+      [](const auto& value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, TrackAlias>) {
+          return value.value;
+        } else if constexpr (std::is_same_v<T, SubscribeID>) {
+          return value.value;
+        }
+        return std::numeric_limits<uint64_t>::max();
+      },
+      trackIdentifier);
+}
 struct ObjectHeader {
-  uint64_t trackAlias;
+  TrackIdentifier trackIdentifier;
   uint64_t group;
   uint64_t subgroup{0}; // meaningless for Track and Datagram
   uint64_t id;
@@ -278,9 +344,17 @@ struct TrackNamespace {
   friend std::ostream& operator<<(
       std::ostream& os,
       const TrackNamespace& trackNs) {
-    for (const auto& s : trackNs.trackNamespace) {
-      os << s << "/";
+    if (trackNs.trackNamespace.empty()) {
+      return os;
     }
+
+    // Iterate through all elements except the last one
+    for (size_t i = 0; i < trackNs.trackNamespace.size() - 1; ++i) {
+      os << trackNs.trackNamespace[i] << '/';
+    }
+
+    // Add the last element without a trailing slash
+    os << trackNs.trackNamespace.back();
     return os;
   }
   bool empty() const {
@@ -321,6 +395,12 @@ struct FullTrackName {
     return trackNamespace < other.trackNamespace ||
         (trackNamespace == other.trackNamespace && trackName < other.trackName);
   }
+  friend std::ostream& operator<<(std::ostream& os, const FullTrackName& ftn) {
+    if (ftn.trackNamespace.empty()) {
+      return os << ftn.trackName;
+    }
+    return os << ftn.trackNamespace << '/' << ftn.trackName;
+  }
   struct hash {
     size_t operator()(const FullTrackName& ftn) const {
       return folly::hash::hash_combine(
@@ -336,8 +416,8 @@ enum class GroupOrder : uint8_t {
 };
 
 struct SubscribeRequest {
-  uint64_t subscribeID;
-  uint64_t trackAlias;
+  SubscribeID subscribeID;
+  TrackAlias trackAlias;
   FullTrackName fullTrackName;
   uint8_t priority;
   GroupOrder groupOrder;
@@ -352,7 +432,7 @@ folly::Expected<SubscribeRequest, ErrorCode> parseSubscribeRequest(
     size_t length) noexcept;
 
 struct SubscribeUpdate {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   AbsoluteLocation start;
   AbsoluteLocation end;
   uint8_t priority;
@@ -364,7 +444,7 @@ folly::Expected<SubscribeUpdate, ErrorCode> parseSubscribeUpdate(
     size_t length) noexcept;
 
 struct SubscribeOk {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   std::chrono::milliseconds expires;
   GroupOrder groupOrder;
   // context exists is inferred from presence of latest
@@ -377,7 +457,7 @@ folly::Expected<SubscribeOk, ErrorCode> parseSubscribeOk(
     size_t length) noexcept;
 
 struct SubscribeError {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   uint64_t errorCode;
   std::string reasonPhrase;
   folly::Optional<uint64_t> retryAlias{folly::none};
@@ -388,7 +468,7 @@ folly::Expected<SubscribeError, ErrorCode> parseSubscribeError(
     size_t length) noexcept;
 
 struct Unsubscribe {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
 };
 
 folly::Expected<Unsubscribe, ErrorCode> parseUnsubscribe(
@@ -396,7 +476,7 @@ folly::Expected<Unsubscribe, ErrorCode> parseUnsubscribe(
     size_t length) noexcept;
 
 struct SubscribeDone {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   SubscribeDoneStatusCode statusCode;
   std::string reasonPhrase;
   folly::Optional<AbsoluteLocation> finalObject;
@@ -478,7 +558,7 @@ folly::Expected<Goaway, ErrorCode> parseGoaway(
     size_t length) noexcept;
 
 struct MaxSubscribeId {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
 };
 
 folly::Expected<MaxSubscribeId, ErrorCode> parseMaxSubscribeId(
@@ -486,7 +566,7 @@ folly::Expected<MaxSubscribeId, ErrorCode> parseMaxSubscribeId(
     size_t length) noexcept;
 
 struct Fetch {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   FullTrackName fullTrackName;
   uint8_t priority;
   GroupOrder groupOrder;
@@ -500,7 +580,7 @@ folly::Expected<Fetch, ErrorCode> parseFetch(
     size_t length) noexcept;
 
 struct FetchCancel {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
 };
 
 folly::Expected<FetchCancel, ErrorCode> parseFetchCancel(
@@ -508,7 +588,7 @@ folly::Expected<FetchCancel, ErrorCode> parseFetchCancel(
     size_t length) noexcept;
 
 struct FetchOk {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   GroupOrder groupOrder;
   uint8_t endOfTrack;
   AbsoluteLocation latestGroupAndObject;
@@ -520,7 +600,7 @@ folly::Expected<FetchOk, ErrorCode> parseFetchOk(
     size_t length) noexcept;
 
 struct FetchError {
-  uint64_t subscribeID;
+  SubscribeID subscribeID;
   uint64_t errorCode;
   std::string reasonPhrase;
 };
