@@ -24,7 +24,11 @@ node_modules/
 package.json
 package-lock.json
 DartConfiguration.tcl
-moxygen/test/
+moxygen/test/*Tests
+moxygen/test/python/build/
+moxygen/test/python/*.so
 .venv/
-!moxygen/test/python/
-!moxygen/test/python/**
+.pytest_cache/
+__pycache__/
+*.pyc
+.coverage
