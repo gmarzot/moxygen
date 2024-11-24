@@ -33,7 +33,7 @@ __pycache__/
 *.pyc
 .coverage
 
-moxygen/test/*Tests
+moxygen/*/*Tests
 moxygen/test/python/build/
 
 
