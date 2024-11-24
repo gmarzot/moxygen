@@ -551,7 +551,7 @@ if [ "$INSTALL_LIBRARIES" == true ] ; then
 fi
 
 # Optionally setup the Python test environment (pytest cython aioquic)
-if [ "$WITH_PYTHON_TESTS" == true ] ; then
+if [ "$WITH_PYTHON_TESTS" == true ] || true ; then
   setup_python_env
 fi
 
