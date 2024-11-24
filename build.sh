@@ -416,13 +416,54 @@ function setup_proxygen() {
   cd "$BWD" || exit
 }
 
-function setup_cython_env() {
-  echo -e "${COLOR_GREEN}[ INFO ] Setting up Cython environment ${COLOR_OFF}"
-  pip3 install --upgrade pip
-  pip3 install --upgrade setuptools
-  pip3 install --upgrade Cython
-  pip3 install --upgrade numpy
-  echo -e "${COLOR_GREEN}Cython environment is set up ${COLOR_OFF}"
+function setup_python_env() {
+  echo -e "${COLOR_GREEN}Setting up Python test environment ${COLOR_OFF}"
+  local PYTHON_MIN_VERSION="3.8"  # Minimum Python version for uv
+  local DESIRED_PYTHON="3.13.0"   # Latest Python version to install via uv
+
+  # Function to check if a command exists
+  cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
+  }
+  echo "Starting Python and uv setup..."
+  # Ensure python3 and pip are installed
+  if ! cmd_exists python3; then
+    echo "Python3 not found. Installing Python3..."
+    apt-get install -y python3 python3-pip
+  fi
+  # Ensure pip is installed and updated
+  if ! cmd_exists pip3; then
+    echo "pip3 not found. Installing pip3..."
+    apt-get install -y python3-pip
+  fi
+  # Install uv using pip
+  echo "Installing uv..."
+  if ! cmd_exists uv; then
+    python3 -m pip install --upgrade uv
+  fi
+  # Verify uv installation
+  if ! cmd_exists uv; then
+    echo "${COLOR_RED}[ ERROR ]Failed to install Python uv...${COLOR_OFF}"
+    return 1
+  fi
+  echo "uv version: $(uv --version)"
+  # Install Python 3.13 using uv
+  echo "Installing Python ${DESIRED_PYTHON}..."
+  uv python install "${DESIRED_PYTHON}"
+  echo "Setting Python ${DESIRED_PYTHON} as default..."
+  uv python pin "${DESIRED_PYTHON}"
+  # Activate the virtual environment
+  uv venv
+  source .venv/bin/activate
+  # Install required packages
+  echo "Installing required packages..."
+  uv pip install build wheel setuptools
+  uv pip install "git+https://github.com/cython/cython.git@3.1.0a1"
+  uv pip install pytest
+  uv pip install pytest-cov
+  uv pip install aioquic
+  echo "To activate the environment, use: source .venv/bin/activate"
+  echo -e "${COLOR_GREEN}Python test environment is set up ${COLOR_OFF}"
 }
 
 # Parse args
@@ -452,6 +493,9 @@ while [ "$1" != "" ]; do
           ;;
     --build-for-fuzzing )
                   BUILD_FOR_FUZZING=true
+      ;;
+    -P | --with-python-tests )
+                  WITH_PYTHON_TESTS=true
       ;;
     -t | --no-tests )
                   NO_BUILD_TESTS=true
@@ -506,6 +550,11 @@ if [ "$INSTALL_LIBRARIES" == true ] ; then
   setup_proxygen
 fi
 
+# Optionally setup the Python test environment (pytest cython aioquic)
+if [ "$WITH_PYTHON_TESTS" == true ] ; then
+  setup_python_env
+fi
+
 MAYBE_BUILD_FUZZERS=""
 MAYBE_USE_STATIC_DEPS=""
 MAYBE_LIB_FUZZING_ENGINE=""
@@ -513,9 +562,8 @@ MAYBE_BUILD_SHARED_LIBS=""
 MAYBE_BUILD_TESTS="-DBUILD_TESTS=ON"
 if [ "$NO_BUILD_TESTS" == true ] ; then
   MAYBE_BUILD_TESTS="-DBUILD_TESTS=OFF"
-elif [ "WITH_CYTHON_TESTS" == true ] ; then
-  setup_cython_env
 fi
+
 if [ "$BUILD_FOR_FUZZING" == true ] ; then
   MAYBE_BUILD_FUZZERS="-DBUILD_FUZZERS=ON"
   MAYBE_USE_STATIC_DEPS="-DUSE_STATIC_DEPS_ON_UNIX=ON"
