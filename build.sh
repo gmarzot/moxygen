@@ -425,25 +425,26 @@ function setup_python_env() {
   cmd_exists() {
     command -v "$1" >/dev/null 2>&1
   }
-  echo "Starting Python and uv setup..."
-  # Ensure python3 and pip are installed
-  if ! cmd_exists python3; then
-    echo "Python3 not found. Installing Python3..."
-    apt-get install -y python3 python3-pip
-  fi
-  # Ensure pip is installed and updated
-  if ! cmd_exists pip3; then
-    echo "pip3 not found. Installing pip3..."
-    apt-get install -y python3-pip
+  # Ensure python3 and pip3 are installed
+  if ! cmd_exists python3 || ! cmd_exists pip3 ; then
+    echo "Python3/pip3 not found. Installing Python3..."
+    if [ "${PLATFORM}" = "Linux" ]; then
+      apt-get install -y python3 python3-pip
+    elif [ "${PLATFORM}" = "Mac" ]; then
+      brew install python3
+    else
+      echo "${COLOR_RED}[ ERROR ] Unrecognised platform: ${PLATFORM}${COLOR_OFF}"
+      return 1
+    fi 
   fi
   # Install uv using pip
   echo "Installing uv..."
-  if ! cmd_exists uv; then
+  if ! cmd_exists uv ; then
     python3 -m pip install --upgrade uv
   fi
   # Verify uv installation
-  if ! cmd_exists uv; then
-    echo "${COLOR_RED}[ ERROR ]Failed to install Python uv...${COLOR_OFF}"
+  if ! cmd_exists uv ; then
+    echo "${COLOR_RED}[ ERROR ] Failed to install Python uv...${COLOR_OFF}"
     return 1
   fi
   echo "uv version: $(uv --version)"
@@ -459,8 +460,7 @@ function setup_python_env() {
   echo "Installing required packages..."
   uv pip install build wheel setuptools
   uv pip install "git+https://github.com/cython/cython.git@3.1.0a1"
-  uv pip install pytest
-  uv pip install pytest-cov
+  uv pip install pytest pytest-cov 
   uv pip install aioquic
   echo "To activate the environment, use: source .venv/bin/activate"
   echo -e "${COLOR_GREEN}Python test environment is set up ${COLOR_OFF}"
