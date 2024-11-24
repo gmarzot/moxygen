@@ -440,7 +440,10 @@ function setup_python_env() {
   # Install uv using pip
   echo "Installing uv..."
   if ! cmd_exists uv ; then
-    python3 -m pip install --upgrade uv
+    python3 -m pip install --upgrade pip
+    python3 -m pip install --upgrade pipx
+    pipx install uv
+    export PATH="${HOME}/.local/bin:${PATH}"
   fi
   # Verify uv installation
   if ! cmd_exists uv ; then

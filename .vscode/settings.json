@@ -16,7 +16,7 @@
     },
     
     // C++ test configuration
-    "testMate.cpp.test.executables": "moxygen/test/*{MoQTests,MoQSessionTest}*",
+    "testMate.cpp.test.executables": "moxygen/**/*Tests",
     
     // Python test configuration
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
