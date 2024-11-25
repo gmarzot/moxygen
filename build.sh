@@ -434,17 +434,17 @@ function setup_python_env() {
   cd "$BASE_DIR"
   if [ ! -d ".venv" ]; then
     python3 -m venv --prompt "pip" .venv
-    source .venv/bin/activate
+    source ./.venv/bin/activate
     python3 -m pip install --upgrade pip
     python3 -m pip install --upgrade uv
-    uv venv --prompt "uv"
+    uv venv --prompt "uv" --python "${DESIRED_PYTHON}"
     ls -alrt
   fi
   if ! command -v "uv" >/dev/null 2>&1 ; then
     echo -e "${COLOR_RED}[ ERROR ] Failed to install uv... ${COLOR_OFF}"
     return 1
   fi
-  source .venv/bin/activate
+  source ./.venv/bin/activate
   hash -r
   type -a uv
   echo "uv version: $(uv --version)"
