@@ -26,24 +26,21 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
+
     - name: Build moxygen
       run: ./build.sh
 
+    - name: Set current date as env variable
+      run: echo "TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+
     - name: Run tests
-      run: |
-        # Find all test executables and run them
-        find ./moxygen -type f -name "*Tests" -executable | while read test_executable; do
-          test_name=$(basename "$test_executable")
-          echo "Running test: $test_name"
-          # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml" | tee "Testing/Temporary/$test_name.log"
-        done
+      run: ./run_tests --results-dir ./_build/test-results/$TIMESTAMP
 
     - name: Publish Results
       uses: dorny/test-reporter@v1
       if: always()  # Run this step even if tests fail
       with:
         name: Moxygen Test Results
-        path: 'Testing/Temporary/*.xml'
-        reporter: java-junit # or another format that matches your XML format
+        path: "./_bulld/test-results/${{ github.env.TIMESTAMP }}/*.xml"
+        reporter: java-junit
         fail-on-error: false

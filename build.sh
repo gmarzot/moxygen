@@ -5,7 +5,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-## Run this script to build moxygen and run the tests.
+## Run this script to build moxygen
 
 # Obtain the base directory this script resides in.
 BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -468,43 +468,46 @@ INSTALL_LIBRARIES=true
 FETCH_DEPENDENCIES=true
 PREFIX=""
 COMPILER_FLAGS=""
-USAGE="./build.sh [-j num_jobs] [-m|--no-jemalloc] [--no-install-dependencies] [-p|--prefix] [-x|--compiler-flags] [--no-fetch-dependencies]"
+USAGE="./build.sh [-j <num_jobs>] [-m|--no-jemalloc] [-p|--prefix <prefix>] [-x|--compiler-flags <flags>] [-t|--no-tests] [-f|--no-fetch-dependencies] [-d|--no-install-dependencies] [-l|--no-install-libraries] [-P|--with-python-tests]"
 while [ "$1" != "" ]; do
   case $1 in
-    -j | --jobs ) shift
-                  JOBS=$1
-                  ;;
+    -j | --jobs )
+        shift
+        JOBS=$1
+      ;;
     -m | --no-jemalloc )
-                  NO_JEMALLOC=true
-                  ;;
-    --no-install-dependencies )
-                  INSTALL_DEPENDENCIES=false
-          ;;
-    --no-install-libraries )
-                  INSTALL_LIBRARIES=false
-          ;;
-    --no-fetch-dependencies )
-                  FETCH_DEPENDENCIES=false
-          ;;
-    --build-for-fuzzing )
-                  BUILD_FOR_FUZZING=true
-      ;;
-    -P | --with-python-tests )
-                  WITH_PYTHON_TESTS=true
-      ;;
-    -t | --no-tests )
-                  NO_BUILD_TESTS=true
-      ;;
+        NO_JEMALLOC=true
+        ;;
     -p | --prefix )
-                  shift
-                  PREFIX=$1
+        shift
+        PREFIX=$1
       ;;
     -x | --compiler-flags )
-                  shift
-                  COMPILER_FLAGS=$1
+        shift
+        COMPILER_FLAGS=$1
       ;;
-    * )           echo "$USAGE"
-                  exit 1
+    -t | --no-tests )
+        NO_BUILD_TESTS=true
+      ;;
+    -d | --no-install-dependencies )
+        INSTALL_DEPENDENCIES=false
+      ;;
+    -l | --no-install-libraries )
+        INSTALL_LIBRARIES=false
+      ;;
+    -f | --no-fetch-dependencies )
+        FETCH_DEPENDENCIES=false
+      ;;
+    -z | --build-for-fuzzing )
+        BUILD_FOR_FUZZING=true
+      ;;
+    -P | --with-python-tests )
+        WITH_PYTHON_TESTS=true
+      ;;
+    * )
+        echo "$USAGE"
+        exit 1
+      ;;
 esac
 shift
 done

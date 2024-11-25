@@ -29,20 +29,16 @@ jobs:
     - name: Build moxygen
       run: sudo ./build.sh
 
+    - name: Set current date as env variable
+      run: echo "TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+
     - name: Run tests
-      run: |
-        # Find all test executables and run them
-        find ./moxygen -type f -name "*Tests" -executable | while read test_executable; do
-          test_name=$(basename "$test_executable")
-          echo "Running test: $test_name"
-          # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml" | tee "Testing/Temporary/$test_name.log"
-        done
-    
+      run: sudo ./run_tests.sh --results-dir ./_build/test-results/$TIMESTAMP
+
     - name: Publish results
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: always()  # Run this step even if tests fail
       with:
-        files: "Testing/Temporary/*.xml"
+        files: "./_build/test-results/${{ github.env.TIMESTAMP }}/*.xml"
         check_name: "Moxygen Test Results"
         action_fail: true
