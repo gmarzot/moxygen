@@ -34,7 +34,7 @@ jobs:
           test_name=$(basename "$test_executable")
           echo "Running test: $test_name"
           # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml"
+          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml | tee "Testing/Temporary/$test_name.log"
         done
     
     - name: Publish results

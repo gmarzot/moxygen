@@ -21,10 +21,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Build it
+    - name: Build moxygen
       run: ./build.sh
 
     - name: Run tests
@@ -34,12 +34,13 @@ jobs:
           test_name=$(basename "$test_executable")
           echo "Running test: $test_name"
           # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml"
+          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml | tee "Testing/Temporary/$test_name.log"
         done
-    
-    - name: Publish results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()  # Run this step even if tests fail
+
+    - name: Test Report
+      uses: dorny/test-reporter@v1
       with:
-        files: "Testing/Temporary/*.xml"
-        check_name: "Moxygen Test Results"
+        name: Moxygen Test Results
+        path: 'Testing/Temporary/*.xml'
+        reporter: java-junit # or another format that matches your XML format
+        fail-on-error: false

@@ -419,53 +419,45 @@ function setup_proxygen() {
 function setup_python_env() {
   echo -e "${COLOR_GREEN}Setting up Python test environment ${COLOR_OFF}"
   local PYTHON_MIN_VERSION="3.8"  # Minimum Python version for uv
-  local DESIRED_PYTHON="3.13.0"   # Latest Python version to install via uv
-
-  # Function to check if a command exists
-  cmd_exists() {
-    command -v "$1" >/dev/null 2>&1
-  }
+  local DESIRED_PYTHON="3.13"   # Latest Python version to install via uv
+  
   # Ensure python3 and pip3 are installed
-  if ! cmd_exists python3 || ! cmd_exists pip3 ; then
-    echo "Python3/pip3 not found. Installing Python3..."
-    if [ "${PLATFORM}" = "Linux" ]; then
-      apt-get install -y python3 python3-pip
-    elif [ "${PLATFORM}" = "Mac" ]; then
-      brew install python3
-    else
-      echo "${COLOR_RED}[ ERROR ] Unrecognised platform: ${PLATFORM}${COLOR_OFF}"
-      return 1
-    fi 
-  fi
-  # Install uv using pip
-  echo "Installing uv..."
-  if ! cmd_exists uv ; then
+  if [ "${PLATFORM}" = "Linux" ]; then
+    apt-get install -y python3 python3-pip python3-venv
+  elif [ "${PLATFORM}" = "Mac" ]; then
+    brew install python3
+  else
+    echo -e "${COLOR_RED}[ ERROR ] Unrecognised platform: ${PLATFORM}${COLOR_OFF}"
+    return 1
+  fi 
+
+  cd "$BASE_DIR"
+  if [ ! -d ".venv" ]; then
+    python3 -m venv --prompt "pip" .venv
+    source .venv/bin/activate
     python3 -m pip install --upgrade pip
-    python3 -m pip install --upgrade pipx
-    pipx install uv
-    export PATH="${HOME}/.local/bin:${PATH}"
+    python3 -m pip install --upgrade uv
+    uv venv --prompt "uv"
   fi
-  # Verify uv installation
-  if ! cmd_exists uv ; then
-    echo "${COLOR_RED}[ ERROR ] Failed to install Python uv...${COLOR_OFF}"
+  if ! command -v "uv" >/dev/null 2>&1 ; then
+    echo -e "${COLOR_RED}[ ERROR ] Failed to install uv... ${COLOR_OFF}"
     return 1
   fi
-  echo "uv version: $(uv --version)"
-  # Install Python 3.13 using uv
-  echo "Installing Python ${DESIRED_PYTHON}..."
-  uv python install "${DESIRED_PYTHON}"
-  echo "Setting Python ${DESIRED_PYTHON} as default..."
-  uv python pin "${DESIRED_PYTHON}"
-  # Activate the virtual environment
-  uv venv
+
   source .venv/bin/activate
+  uv pip install --upgrade uv
+  hash -r
+  echo "uv version: $(uv --version)"
+
+  # Install desired python verion using uv
+  uv python install "${DESIRED_PYTHON}"
+  uv python pin "${DESIRED_PYTHON}"
   # Install required packages
-  echo "Installing required packages..."
   uv pip install build wheel setuptools
   uv pip install "git+https://github.com/cython/cython.git@3.1.0a1"
   uv pip install pytest pytest-cov 
   uv pip install aioquic
-  echo "To activate the environment, use: source .venv/bin/activate"
+  deactivate
   echo -e "${COLOR_GREEN}Python test environment is set up ${COLOR_OFF}"
 }
 
