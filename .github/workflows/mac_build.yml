@@ -31,16 +31,16 @@ jobs:
       run: ./build.sh
 
     - name: Set current date as env variable
-      run: echo "TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+      run: printf "TIMESTAMP=$(date +%Y-%m-%d-%H:%M:%S)" >> $GITHUB_ENV
 
     - name: Run tests
-      run: ./run_tests --results-dir ./_build/test-results/$TIMESTAMP
+      run: ./run_tests.sh --results-dir ./_build/test-results/
 
     - name: Publish Results
       uses: dorny/test-reporter@v1
       if: always()  # Run this step even if tests fail
       with:
         name: Moxygen Test Results
-        path: "./_bulld/test-results/${{ github.env.TIMESTAMP }}/*.xml"
+        path: "./_bulld/test-results/*.xml"
         reporter: java-junit
         fail-on-error: false

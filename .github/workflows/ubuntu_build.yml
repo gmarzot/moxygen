@@ -30,7 +30,7 @@ jobs:
       run: sudo ./build.sh
 
     - name: Set current date as env variable
-      run: echo "TIMESTAMP=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+      run:  printf "TIMESTAMP=$(date +%Y-%m-%d-%H:%M:%S)" >> $GITHUB_ENV
 
     - name: Run tests
       run: sudo ./run_tests.sh --results-dir ./_build/test-results/$TIMESTAMP
