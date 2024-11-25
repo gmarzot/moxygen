@@ -18,9 +18,11 @@ on:
 
 permissions:
   contents: read  #  to fetch code (actions/checkout)
+  checks: write
 
 jobs:
   build:
+    name: Build & Test
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
@@ -34,11 +36,12 @@ jobs:
           test_name=$(basename "$test_executable")
           echo "Running test: $test_name"
           # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml | tee "Testing/Temporary/$test_name.log"
+          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml" | tee "Testing/Temporary/$test_name.log"
         done
 
-    - name: Test Report
+    - name: Publish Results
       uses: dorny/test-reporter@v1
+      if: always()  # Run this step even if tests fail
       with:
         name: Moxygen Test Results
         path: 'Testing/Temporary/*.xml'

@@ -18,10 +18,12 @@ on:
 
 permissions:
   contents: read  #  to fetch code (actions/checkout)
+  checks: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    name: Build & Test
     steps:
     - uses: actions/checkout@v4
     - name: Build moxygen
@@ -34,7 +36,7 @@ jobs:
           test_name=$(basename "$test_executable")
           echo "Running test: $test_name"
           # Run test and generate XML output
-          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml | tee "Testing/Temporary/$test_name.log"
+          "$test_executable" --gtest_output="xml:Testing/Temporary/$test_name.xml" | tee "Testing/Temporary/$test_name.log"
         done
     
     - name: Publish results
@@ -43,3 +45,4 @@ jobs:
       with:
         files: "Testing/Temporary/*.xml"
         check_name: "Moxygen Test Results"
+        action_fail: true
