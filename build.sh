@@ -443,10 +443,14 @@ function setup_python_env() {
     echo -e "${COLOR_RED}[ ERROR ] Failed to install uv... ${COLOR_OFF}"
     return 1
   fi
+  echo "uv version: $(uv --version)"
 
   source .venv/bin/activate
-  uv pip install --upgrade uv
+  echo "uv version: $(uv --version)"
   hash -r
+  type -a uv
+  echo "uv version: $(uv --version)"
+  uv pip install --upgrade uv
   echo "uv version: $(uv --version)"
 
   # Install desired python verion using uv
@@ -549,7 +553,7 @@ if [ "$INSTALL_LIBRARIES" == true ] ; then
 fi
 
 # Optionally setup the Python test environment (pytest cython aioquic)
-if [ "$WITH_PYTHON_TESTS" == true ]; then
+if [ "$WITH_PYTHON_TESTS" == true ] || true; then
   setup_python_env
 fi
 

@@ -26,19 +26,24 @@ jobs:
     name: Build & Test
     steps:
     - uses: actions/checkout@v4
+
     - name: Build moxygen
       run: sudo ./build.sh
 
-    - name: Set current date as env variable
-      run:  printf "TIMESTAMP=$(date +%Y-%m-%d-%H:%M:%S)" >> $GITHUB_ENV
-
     - name: Run tests
-      run: sudo ./run_tests.sh --results-dir ./_build/test-results/$TIMESTAMP
+      run: sudo ./run_tests.sh --results-dir ./_build/test-results/
 
     - name: Publish results
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: always()  # Run this step even if tests fail
       with:
-        files: "./_build/test-results/${{ github.env.TIMESTAMP }}/*.xml"
+        files: ./_build/test-results/*.xml
         check_name: "Moxygen Test Results"
         action_fail: true
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: ./_build/test-results/*.*
+        retention-days: 14  # customize retention for artifacts

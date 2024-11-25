@@ -41,7 +41,7 @@ if [ ! -w "${RESULTS_DIR}" ]; then
   exit 1
 fi
 # Find all test executables and run them
-find ./moxygen -type f -name "*Tests" -executable |
+find ./moxygen -type f -name "*Tests" -perm -u+x |
   while read test_executable; do
     test_name=$(basename "$test_executable")
     echo "Running test: $test_name"
