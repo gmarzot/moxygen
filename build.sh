@@ -446,7 +446,8 @@ function setup_python_env() {
   fi
   source ./.venv/bin/activate
   hash -r
-  type -a uv
+ echo "PATH=${PATH}"
+ which uv
   echo "uv version: $(uv --version)"
   uv pip install --upgrade uv
   echo "uv version: $(uv --version)"
