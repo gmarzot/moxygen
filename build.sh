@@ -438,19 +438,19 @@ function setup_python_env() {
     python3 -m pip install --upgrade pip
     python3 -m pip install --upgrade uv
     uv venv --prompt "uv" --python "${DESIRED_PYTHON}"
-    ls -alrt
   fi
+
+  source ./.venv/bin/activate
+  echo "PATH=${PATH}"
   if ! command -v "uv" >/dev/null 2>&1 ; then
     echo -e "${COLOR_RED}[ ERROR ] Failed to install uv... ${COLOR_OFF}"
     return 1
   fi
-  source ./.venv/bin/activate
+  echo "(1) uv version: $(uv --version)"
   hash -r
- echo "PATH=${PATH}"
- which uv
-  echo "uv version: $(uv --version)"
+  echo "(2) uv version: $(uv --version)"
   uv pip install --upgrade uv
-  echo "uv version: $(uv --version)"
+  echo "(3) uv version: $(uv --version)"
 
   # Install desired python verion using uv
   uv python install "${DESIRED_PYTHON}"
