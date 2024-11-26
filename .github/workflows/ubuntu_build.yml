@@ -19,6 +19,7 @@ on:
 permissions:
   contents: read  #  to fetch code (actions/checkout)
   checks: write
+  pull-requests: write
 
 jobs:
   build:
@@ -39,7 +40,8 @@ jobs:
       uses: EnricoMi/publish-unit-test-result-action@v2
       with:
         files: ./_build/test-results/*.xml
-        check_name: "Moxygen Test Results"
+        github_token: ${{ github.token }}
+        check_name: "Moxygen Tests - Linux"
         action_fail: true
 
     - name: Upload Artifacts

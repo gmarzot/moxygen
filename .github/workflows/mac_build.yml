@@ -19,6 +19,7 @@ on:
 permissions:
   contents: read  #  to fetch code (actions/checkout)
   checks: write
+  pull-requests: write
 
 jobs:
   build:
@@ -39,7 +40,7 @@ jobs:
     - name: Publish Results
       uses: dorny/test-reporter@v1
       with:
-        name: Moxygen Tests
+        name: Moxygen Tests - MacOS
         path: ./_build/test-results/*.xml
         reporter: java-junit
 
