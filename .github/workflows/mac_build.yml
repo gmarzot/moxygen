@@ -35,18 +35,18 @@ jobs:
 
     - name: Run Tests
       if: success()
-      run: ./run_tests.sh --results-dir ./_build/test-results/macos
+      run: ./run_tests.sh --results-dir ./_build/test-results
 
     - name: Publish Results
-      uses: dorny/test-reporter@v1
+      uses: dorny/test-reporter@v1.9.1
       with:
         name: MacOS Moxygen Tests
-        path: ./_build/test-results/macos/*.xml
+        path: ./_build/test-results/*.xml
         reporter: java-junit
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: test-results-macos
-        path: ./_build/test-results/macos/*.*
+        path: ./_build/test-results/*.*
         retention-days: 14  # customize retention for artifacts

@@ -1,12 +1,4 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
-# This builds moxygen for Linux Ubuntu
-
-name: linux
+name: BUILD_TEST_MATRIX
 
 on:
   push:
@@ -17,20 +9,25 @@ on:
     - main
 
 permissions:
-  contents: read  #  to fetch code (actions/checkout)
+  contents: read
   checks: write
   pull-requests: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    name: Build & Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} Build & Test
+    
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
     - name: Run Build
-      run: sudo ./build.sh
+      run: ./build.sh
 
     - name: Run Tests
       if: success()
@@ -39,7 +36,7 @@ jobs:
     - name: Publish Results
       uses: dorny/test-reporter@v1.9.1
       with:
-        name: "Linux Moxygen Tests"
+        name: "${{ matrix.os }} Moxygen Tests"
         path: ./_build/test-results/*.xml
         reporter: java-junit
 
@@ -47,6 +44,6 @@ jobs:
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: test-results-linux
+        name: test-results-${{ matrix.os }}
         path: ./_build/test-results/*.*
-        retention-days: 14  # customize retention for artifacts
+        retention-days: 14
