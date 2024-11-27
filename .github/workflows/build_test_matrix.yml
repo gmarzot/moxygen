@@ -1,4 +1,4 @@
-name: BUILD_TEST_MATRIX
+name: Build & Test Matrix
 
 on:
   push:
@@ -15,29 +15,32 @@ permissions:
 
 jobs:
   build:
+
     strategy:
-        fail-fast: false  # Add this line to let all jobs complete
-        matrix:
-            os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+      matrix:
+        config:
+        - {os: ubuntu-latest, prefix: sudo, name: Linux}
+        - {os: macos-latest, prefix: "", name: MacOS}
     
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os }} Build & Test
+    runs-on: ${{ matrix.config.os }}
+    name: Build & Test - ${{ matrix.config.name }} 
     
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
     - name: Run Build
-      run: sudo ./build.sh
+      run: ${{ matrix.config.prefix }} ./build.sh
 
     - name: Run Tests
       if: success()
-      run: sudo ./run_tests.sh --results-dir ./_build/test-results
+      run: ${{ matrix.config.prefix }} ./run_tests.sh --results-dir ./_build/test-results
 
     - name: Publish Results
       uses: dorny/test-reporter@v1.9.1
       with:
-        name: "${{ matrix.os }} Moxygen Tests"
+        name: "Moxygen Tests - ${{ matrix.config.name }}"
         path: ./_build/test-results/*.xml
         reporter: java-junit
 
@@ -45,6 +48,6 @@ jobs:
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: test-results-${{ matrix.os }}
+        name: test-results-${{ matrix.config.os }}
         path: ./_build/test-results/*.*
         retention-days: 14
