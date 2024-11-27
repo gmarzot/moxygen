@@ -418,12 +418,12 @@ function setup_proxygen() {
 
 function setup_python_env() {
   echo -e "${COLOR_GREEN}Setting up Python test environment ${COLOR_OFF}"
-  local PYTHON_MIN_VERSION="3.8"  # Minimum Python version for uv
-  local DESIRED_PYTHON="3.13"   # Latest Python version to install via uv
-  
+  local PYTHON_VERSION="3.13"   # Latest Python version to install via uv
+  local CYTHON_VERSION="3.1.0a1" # Target Cython release - use 3.1.0 when released
+
   # Ensure python3 and pip3 are installed
   if [ "${PLATFORM}" = "Linux" ]; then
-    apt-get install -y python3 python3-pip python3-venv
+    apt-get install -y python3 python3-pip python3-venv clang
   elif [ "${PLATFORM}" = "Mac" ]; then
     brew install python3
   else
@@ -432,12 +432,18 @@ function setup_python_env() {
   fi 
 
   cd "$BASE_DIR"
-  if [ ! -d ".venv" ]; then
-    python3 -m venv --prompt "pip" .venv
-    source ./.venv/bin/activate
+  VENV_DIR=".venv"
+  UV_PIP_INSTALL="uv pip install --upgrade"
+  export UV_PYTHON_INSTALL_DIR="${VENV_DIR}"
+
+  if [ ! -d "${VENV_DIR}" ]; then
+    python3 -m venv --prompt "pip" "${VENV_DIR}"
+    source "${VENV_DIR}/bin/activate"
     python3 -m pip install --upgrade pip
     python3 -m pip install --upgrade uv
-    uv venv --prompt "uv" --allow-existing --seed --python "${DESIRED_PYTHON}"
+    uv venv --prompt "uv" \
+      --relocatable --allow-existing --seed \
+      --python "${PYTHON_VERSION}" "${VENV_DIR}"
   fi
 
   source ./.venv/bin/activate
@@ -446,19 +452,21 @@ function setup_python_env() {
     return 1
   fi
 
-  uv pip install --upgrade uv
+  # Ensure uv is upgraded to latest
+  ${UV_PIP_INSTALL} uv
 
   # Install desired python verion using uv
-  uv python install "${DESIRED_PYTHON}"
-  uv python pin "${DESIRED_PYTHON}"
+  uv python install "${PYTHON_VERSION}"
+  uv python pin "${PYTHON_VERSION}" 
 
   # Install required packages
-  uv pip install build wheel setuptools
-  uv pip install "git+https://github.com/cython/cython.git@3.1.0a1"
-  uv pip install pytest pytest-cov 
-  uv pip install aioquic
+  ${UV_PIP_INSTALL} build wheel setuptools
+  ${UV_PIP_INSTALL} "git+https://github.com/cython/cython.git@${CYTHON_VERSION}"
+  ${UV_PIP_INSTALL} pytest pytest-cov 
+  ${UV_PIP_INSTALL} aioquic
 
   deactivate
+
   echo -e "${COLOR_GREEN}Python test environment is set up ${COLOR_OFF}"
 }
 
@@ -550,7 +558,7 @@ if [ "$INSTALL_LIBRARIES" == true ] ; then
 fi
 
 # Optionally setup the Python test environment (pytest cython aioquic)
-if [ "$WITH_PYTHON_TESTS" == true ]; then
+if [ "$WITH_PYTHON_TESTS" == true ] || true; then
   setup_python_env
 fi
 
