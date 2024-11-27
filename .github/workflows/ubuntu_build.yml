@@ -34,20 +34,26 @@ jobs:
 
     - name: Run Tests
       if: success()
-      run: sudo ./run_tests.sh --results-dir ./_build/test-results/
+      run: sudo ./run_tests.sh --results-dir ./_build/test-results/linux
 
     - name: Publish Results
       uses: EnricoMi/publish-unit-test-result-action@v2
       with:
-        files: ./_build/test-results/*.xml
+        files: ./_build/test-results/lunux/*.xml
         github_token: ${{ github.token }}
-        check_name: "Moxygen Tests - Linux"
+        check_name: "Linux Moxygen Tests"
         action_fail: true
+        test_changes_limit: 0
+        report_individual_runs: true
+        deduplicate_classes_by_file_name: true
+        check_run_annotations: all tests
+        compare_to_earlier_commit: true
+        pull_request_build: true
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: test-results
-        path: ./_build/test-results/*.*
+        name: test-results-linux
+        path: ./_build/test-results/linux/*.*
         retention-days: 14  # customize retention for artifacts
