@@ -6,7 +6,7 @@
 # distutils: define_macros=CYTHON_TRACE=1
 # distutils: language = c++
 
-cdef extern from "example.hpp":
+cdef extern from "example.h":
     cdef cppclass Calculator:
         Calculator() except +
         int add(int a, int b)

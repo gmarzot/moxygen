@@ -462,7 +462,7 @@ function setup_python_env() {
   # Install required packages
   ${UV_PIP_INSTALL} build wheel setuptools
   ${UV_PIP_INSTALL} "git+https://github.com/cython/cython.git@${CYTHON_VERSION}"
-  ${UV_PIP_INSTALL} pytest pytest-cov 
+  ${UV_PIP_INSTALL} pytest pytest-asyncio pytest-cov 
   ${UV_PIP_INSTALL} aioquic
 
   deactivate

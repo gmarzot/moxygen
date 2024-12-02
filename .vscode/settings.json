@@ -12,7 +12,16 @@
     "cmake.buildTask": false,
     "cmake.deleteBuildDirOnCleanConfigure": false,
     "files.associations": {
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "optional": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "array": "cpp",
+        "functional": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "variant": "cpp"
     },
     
     // C++ test configuration

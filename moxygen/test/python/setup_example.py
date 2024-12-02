@@ -5,7 +5,7 @@ from setuptools.extension import Extension
 ext_modules = [
     Extension(
         "cy_example",
-        ["cy_example.pyx", "example.cpp"],
+        ["example/cy_example.pyx", "example/example.cpp"],
         language="c++",
         include_dirs=["."],
         define_macros=[('CYTHON_TRACE', '1')],
