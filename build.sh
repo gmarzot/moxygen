@@ -26,8 +26,11 @@ function detect_platform() {
 }
 
 function install_dependencies_linux() {
-  apt update -yq
-  apt install -yq \
+  if [ "$EUID" -ne 0 ]; then
+    SUDO=sudo
+  fi
+  ${SUDO} apt update -yq
+  ${SUDO} apt install -yq \
     build-essential \
     git \
     python3 \
@@ -423,7 +426,10 @@ function setup_python_env() {
 
   # Ensure python3 and pip3 are installed
   if [ "${PLATFORM}" = "Linux" ]; then
-    apt-get install -y python3 python3-pip python3-venv clang
+    if [ "$EUID" -ne 0 ]; then
+      SUDO=sudo
+    fi
+    ${SUDO} apt-get install -y python3 python3-pip python3-venv clang
   elif [ "${PLATFORM}" = "Mac" ]; then
     brew install python3
   else

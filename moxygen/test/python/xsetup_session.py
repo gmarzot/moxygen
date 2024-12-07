@@ -10,7 +10,7 @@ ext_modules = [Extension(
     "moxygen.moqsession.session",
     ["moxygen/moqsession/session.pyx"],
     language="c++",
-    include_dirs=[MOXYGEN_ROOT, "/usr/local/include"],
+    include_dirs=[f"{MOXYGEN_ROOT}/moxygen", f"{MOXYGEN_ROOT}/_build/deps/include", "/usr/include"],
     library_dirs=["/usr/local/lib", "/usr/lib"],
     libraries=["folly", "proxygen", "glog", "double-conversion", "fmt", 
               "event", "boost_context", "boost_system"],
