@@ -50,19 +50,18 @@ void MoQServer::createMoQQuicSession(
     evb = qevb->getTypedEventBase<quic::FollyQuicEventBase>()
               ->getBackingEventBase();
   }
-  auto moqSession =
-      std::make_shared<MoQSession>(MoQControlCodec::Direction::SERVER, wt, evb);
+  auto moqSession = std::make_shared<MoQSession>(wt, *this, evb);
   qWtPtr->setHandler(moqSession.get());
   // the handleClientSession coro this session moqSession
   handleClientSession(std::move(moqSession)).scheduleOn(evb).start();
 }
 
-void MoQServer::ControlVisitor::operator()(ClientSetup /*setup*/) const {
+folly::Try<ServerSetup> MoQServer::onClientSetup(ClientSetup /*setup*/) {
   XLOG(INFO) << "ClientSetup";
   // TODO: Make the default MAX_SUBSCRIBE_ID configurable and
   // take in the value from ClientSetup
   static constexpr size_t kDefaultMaxSubscribeId = 100;
-  clientSession_->setup({
+  return folly::Try<ServerSetup>(ServerSetup({
       kVersionDraftCurrent,
       {{folly::to_underlying(SetupKey::ROLE),
         "",
@@ -70,13 +69,7 @@ void MoQServer::ControlVisitor::operator()(ClientSetup /*setup*/) const {
        {folly::to_underlying(SetupKey::MAX_SUBSCRIBE_ID),
         "",
         kDefaultMaxSubscribeId}},
-  });
-}
-
-void MoQServer::ControlVisitor::operator()(ServerSetup) const {
-  // error
-  XLOG(ERR) << "Server received ServerSetup";
-  clientSession_->close();
+  }));
 }
 
 void MoQServer::ControlVisitor::operator()(
@@ -94,33 +87,9 @@ void MoQServer::ControlVisitor::operator()(
   XLOG(INFO) << "SubscribeRequest id=" << subscribeUpdate.subscribeID;
 }
 
-void MoQServer::ControlVisitor::operator()(
-    MaxSubscribeId maxSubscribeId) const {
-  XLOG(INFO) << fmt::format(
-      "maxSubscribeId id={}", maxSubscribeId.subscribeID.value);
-}
-
 // TODO: Implement message handling
 void MoQServer::ControlVisitor::operator()(Fetch fetch) const {
   XLOG(INFO) << "Fetch id=" << fetch.subscribeID;
-}
-
-void MoQServer::ControlVisitor::operator()(FetchCancel fetchCancel) const {
-  XLOG(INFO) << "FetchCancel id=" << fetchCancel.subscribeID;
-}
-
-void MoQServer::ControlVisitor::operator()(FetchOk fetchOk) const {
-  XLOG(INFO) << "FetchOk id=" << fetchOk.subscribeID;
-}
-
-void MoQServer::ControlVisitor::operator()(FetchError fetchError) const {
-  XLOG(INFO) << "FetchError id=" << fetchError.subscribeID;
-}
-
-void MoQServer::ControlVisitor::operator()(SubscribeDone subscribeDone) const {
-  XLOG(INFO) << "SubscribeDone id=" << subscribeDone.subscribeID
-             << " code=" << folly::to_underlying(subscribeDone.statusCode)
-             << " reason=" << subscribeDone.reasonPhrase;
 }
 
 void MoQServer::ControlVisitor::operator()(Unsubscribe unsubscribe) const {
@@ -175,6 +144,7 @@ void MoQServer::ControlVisitor::operator()(Goaway goaway) const {
 folly::coro::Task<void> MoQServer::handleClientSession(
     std::shared_ptr<MoQSession> clientSession) {
   clientSession->start();
+  co_await clientSession->clientSetupComplete();
 
   auto control = makeControlVisitor(clientSession);
   while (auto msg = co_await clientSession->controlMessages().next()) {
@@ -211,8 +181,7 @@ void MoQServer::Handler::onHeadersComplete(
     return;
   }
   auto evb = folly::EventBaseManager::get()->getEventBase();
-  clientSession_ =
-      std::make_shared<MoQSession>(MoQControlCodec::Direction::SERVER, wt, evb);
+  clientSession_ = std::make_shared<MoQSession>(wt, server_, evb);
 
   server_.handleClientSession(clientSession_).scheduleOn(evb).start();
 }

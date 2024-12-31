@@ -6,33 +6,40 @@
 
 #include "moxygen/test/TestUtils.h"
 
+#include <folly/Random.h>
+#include <folly/io/Cursor.h>
 #include "moxygen/MoQFramer.h"
 
 namespace moxygen::test {
 
-std::unique_ptr<folly::IOBuf> writeAllControlMessages() {
+std::unique_ptr<folly::IOBuf> writeAllControlMessages(TestControlMessages in) {
   folly::IOBufQueue writeBuf{folly::IOBufQueue::cacheChainLength()};
-  auto res = writeClientSetup(
-      writeBuf,
-      ClientSetup(
-          {{1},
-           {
-               {folly::to_underlying(SetupKey::ROLE),
-                "",
-                folly::to_underlying(Role::SUBSCRIBER)},
-               {folly::to_underlying(SetupKey::PATH), "/foo", 0},
-               {folly::to_underlying(SetupKey::MAX_SUBSCRIBE_ID), "", 100},
-           }}));
-  res = writeServerSetup(
-      writeBuf,
-      ServerSetup(
-          {1,
-           {
-               {folly::to_underlying(SetupKey::ROLE),
-                "",
-                folly::to_underlying(Role::SUBSCRIBER)},
-               {folly::to_underlying(SetupKey::PATH), "/foo", 0},
-           }}));
+  WriteResult res;
+  if (in != TestControlMessages::SERVER) {
+    res = writeClientSetup(
+        writeBuf,
+        ClientSetup(
+            {{1},
+             {
+                 {folly::to_underlying(SetupKey::ROLE),
+                  "",
+                  folly::to_underlying(Role::SUBSCRIBER)},
+                 {folly::to_underlying(SetupKey::PATH), "/foo", 0},
+                 {folly::to_underlying(SetupKey::MAX_SUBSCRIBE_ID), "", 100},
+             }}));
+  }
+  if (in != TestControlMessages::CLIENT) {
+    res = writeServerSetup(
+        writeBuf,
+        ServerSetup(
+            {1,
+             {
+                 {folly::to_underlying(SetupKey::ROLE),
+                  "",
+                  folly::to_underlying(Role::SUBSCRIBER)},
+                 {folly::to_underlying(SetupKey::PATH), "/foo", 0},
+             }}));
+  }
   res = writeSubscribeRequest(
       writeBuf,
       SubscribeRequest(
@@ -222,6 +229,20 @@ std::unique_ptr<folly::IOBuf> writeAllObjectMessages() {
            0}),
       nullptr);
   return writeBuf.move();
+}
+
+std::unique_ptr<folly::IOBuf> makeBuf(uint32_t size) {
+  auto out = folly::IOBuf::create(size);
+  out->append(size);
+  // fill with random junk
+  folly::io::RWPrivateCursor cursor(out.get());
+  while (cursor.length() >= 8) {
+    cursor.write<uint64_t>(folly::Random::rand64());
+  }
+  while (cursor.length()) {
+    cursor.write<uint8_t>((uint8_t)folly::Random::rand32());
+  }
+  return out;
 }
 
 } // namespace moxygen::test

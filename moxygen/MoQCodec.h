@@ -79,7 +79,7 @@ class MoQControlCodec : public MoQCodec {
 
   enum class Direction { CLIENT, SERVER };
   MoQControlCodec(Direction dir, ControlCallback* callback)
-      : callback_(callback) {}
+      : dir_(dir), callback_(callback) {}
 
   void setCallback(ControlCallback* callback) {
     callback_ = callback;
@@ -122,6 +122,7 @@ class MoQControlCodec : public MoQCodec {
 
   folly::Expected<folly::Unit, ErrorCode> parseFrame(folly::io::Cursor& cursor);
 
+  Direction dir_;
   ControlCallback* callback_{nullptr};
   FrameType curFrameType_;
   size_t curFrameLength_{0};
@@ -131,6 +132,7 @@ class MoQControlCodec : public MoQCodec {
     FRAME_PAYLOAD,
   };
   ParseState parseState_{ParseState::FRAME_HEADER_TYPE};
+  bool seenSetup_{false};
 };
 
 class MoQObjectStreamCodec : public MoQCodec {
@@ -139,14 +141,27 @@ class MoQObjectStreamCodec : public MoQCodec {
    public:
     ~ObjectCallback() override = default;
 
-    virtual void onObjectHeader(ObjectHeader objectHeader) = 0;
-
-    virtual void onObjectPayload(
-        TrackIdentifier trackIdentifier,
-        uint64_t groupID,
-        uint64_t id,
-        std::unique_ptr<folly::IOBuf> payload,
-        bool eom) = 0;
+    virtual void onFetchHeader(SubscribeID subscribeID) = 0;
+    virtual void onSubgroup(
+        TrackAlias alias,
+        uint64_t group,
+        uint64_t subgroup,
+        uint8_t priority) = 0;
+    virtual void onObjectBegin(
+        uint64_t group,
+        uint64_t subgroup,
+        uint64_t objectID,
+        uint64_t length,
+        Payload initialPayload,
+        bool objectComplete,
+        bool subgroupComplete) = 0;
+    virtual void onObjectStatus(
+        uint64_t group,
+        uint64_t subgroup,
+        uint64_t objectID,
+        ObjectStatus status) = 0;
+    virtual void onObjectPayload(Payload payload, bool objectComplete) = 0;
+    virtual void onEndOfStream() = 0;
   };
 
   MoQObjectStreamCodec(ObjectCallback* callback) : callback_(callback) {}
@@ -157,21 +172,18 @@ class MoQObjectStreamCodec : public MoQCodec {
 
   void onIngress(std::unique_ptr<folly::IOBuf> data, bool eom) override;
 
-  TrackIdentifier getTrackIdentifier() const {
-    return curObjectHeader_.trackIdentifier;
-  }
-
  private:
   enum class ParseState {
     STREAM_HEADER_TYPE,
-    DATAGRAM,
     OBJECT_STREAM,
+    FETCH_HEADER,
     MULTI_OBJECT_HEADER,
     OBJECT_PAYLOAD,
+    STREAM_FIN_DELIVERED,
     // OBJECT_PAYLOAD_NO_LENGTH
   };
   ParseState parseState_{ParseState::STREAM_HEADER_TYPE};
-  StreamType streamType_{StreamType::OBJECT_DATAGRAM};
+  StreamType streamType_{StreamType::STREAM_HEADER_SUBGROUP};
   ObjectCallback* callback_;
 };
 
