@@ -274,7 +274,8 @@ function setup_folly() {
     "$MAYBE_USE_STATIC_BOOST"                     \
     "$MAYBE_BUILD_SHARED_LIBS"                    \
     "$MAYBE_OVERRIDE_CXX_FLAGS"                   \
-    $MAYBE_DISABLE_JEMALLOC                       \
+    "$MAYBE_DISABLE_JEMALLOC"                     \
+    "$MAYBE_PYTHON_EXTENSIONS"                    \
     ..
   make -j "$JOBS"
   make install
@@ -422,7 +423,7 @@ function setup_proxygen() {
 function setup_python_env() {
   echo -e "${COLOR_GREEN}Setting up Python test environment ${COLOR_OFF}"
   local PYTHON_VERSION="3.13"   # Latest Python version to install via uv
-  local CYTHON_VERSION="3.1.0a1" # Target Cython release - use 3.1.0 when released
+  local CYTHON_VERSION="3.0.11-1" # Target Cython release (3.1.0a1 - use 3.1.0 when released
 
   # Ensure python3 and pip3 are installed
   if [ "${PLATFORM}" = "Linux" ]; then
@@ -516,8 +517,8 @@ while [ "$1" != "" ]; do
     -z | --build-for-fuzzing )
         BUILD_FOR_FUZZING=true
       ;;
-    -P | --with-python-tests )
-        WITH_PYTHON_TESTS=true
+    -P | --with-python )
+        WITH_PYTHON_ENV=true
       ;;
     * )
         echo "$USAGE"
@@ -536,6 +537,11 @@ fi
 MAYBE_OVERRIDE_CXX_FLAGS=""
 if [ -n "$COMPILER_FLAGS" ] ; then
   MAYBE_OVERRIDE_CXX_FLAGS="-DCMAKE_CXX_FLAGS=$COMPILER_FLAGS"
+fi
+
+MAYBE_PYTHON_EXTENSIONS=
+if [ -n "$WITH_PYTHON_ENV" ] ; then
+  MAYBE_PYTHON_EXTENSIONS="-DPYTHON_EXTENSIONS=ON"
 fi
 
 BUILD_DIR=_build
@@ -561,11 +567,6 @@ if [ "$INSTALL_LIBRARIES" == true ] ; then
   setup_wangle
   setup_mvfst
   setup_proxygen
-fi
-
-# Optionally setup the Python test environment (pytest cython aioquic)
-if [ "$WITH_PYTHON_TESTS" == true ] || true; then
-  setup_python_env
 fi
 
 MAYBE_BUILD_FUZZERS=""
@@ -618,4 +619,10 @@ echo "Current: $(pwd)"
 echo "BWD: $BWD"
 make -j "$JOBS"
 make install
+
+# Optionally setup Python environment (pytest cython aioquic)
+if [ "$WITH_PYTHON_ENV" == true ] || true; then
+  setup_python_env
+fi
+
 echo -e "${COLOR_GREEN}Moxygen build is complete${COLOR_OFF}"
