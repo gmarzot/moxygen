@@ -67,6 +67,113 @@ std::unique_ptr<folly::IOBuf> MoQMi::toObjectPayload(
   return buffQueue.move();
 }
 
+MoQMi::MoqMiTag MoQMi::fromObjectPayload(
+    std::unique_ptr<folly::IOBuf> payload) noexcept {
+  folly::io::Cursor cursor(payload.get());
+
+  auto mediaType = quic::decodeQuicInteger(cursor);
+  if (!mediaType) {
+    return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+  }
+
+  if (mediaType->first == folly::to_underlying(PayloadType::VideoH264AVCCWCP)) {
+    VideoH264AVCCWCPData videoData;
+    auto seqId = quic::decodeQuicInteger(cursor);
+    if (!seqId) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto pts = quic::decodeQuicInteger(cursor);
+    if (!pts) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto dts = quic::decodeQuicInteger(cursor);
+    if (!dts) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto timescale = quic::decodeQuicInteger(cursor);
+    if (!timescale) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto duration = quic::decodeQuicInteger(cursor);
+    if (!duration) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto wallclock = quic::decodeQuicInteger(cursor);
+    if (!wallclock) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto metadataSize = quic::decodeQuicInteger(cursor);
+    if (!metadataSize) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    std::unique_ptr<folly::IOBuf> metadata;
+    if (metadataSize->first > 0) {
+      if (!cursor.canAdvance(metadataSize->first)) {
+        return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+      }
+      cursor.clone(metadata, metadataSize->first);
+    }
+    std::unique_ptr<folly::IOBuf> data;
+    cursor.clone(data, cursor.totalLength());
+    return std::make_unique<VideoH264AVCCWCPData>(
+        seqId->first,
+        pts->first,
+        timescale->first,
+        duration->first,
+        wallclock->first,
+        std::move(data),
+        std::move(metadata),
+        dts->first);
+  }
+
+  if (mediaType->first == folly::to_underlying(PayloadType::AudioAACMP4LCWCP)) {
+    AudioAACMP4LCWCPData audioData;
+
+    auto seqId = quic::decodeQuicInteger(cursor);
+    if (!seqId) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto pts = quic::decodeQuicInteger(cursor);
+    if (!pts) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto timescale = quic::decodeQuicInteger(cursor);
+    if (!timescale) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto sampleFreq = quic::decodeQuicInteger(cursor);
+    if (!sampleFreq) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto numChannels = quic::decodeQuicInteger(cursor);
+    if (!numChannels) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto duration = quic::decodeQuicInteger(cursor);
+    if (!duration) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    auto wallclock = quic::decodeQuicInteger(cursor);
+    if (!wallclock) {
+      return MoQMi::MoqMiReadCmd::MOQMI_ERR;
+    }
+    std::unique_ptr<folly::IOBuf> data;
+    cursor.clone(data, cursor.totalLength());
+    return std::make_unique<AudioAACMP4LCWCPData>(
+        seqId->first,
+        pts->first,
+        timescale->first,
+        duration->first,
+        wallclock->first,
+        std::move(data),
+        sampleFreq->first,
+        numChannels->first);
+  }
+
+  // Not implemented payload type
+  return MoQMi::MoqMiReadCmd::MOQMI_UNKNOWN;
+}
+
 void MoQMi::writeBuffer(
     folly::IOBufQueue& buf,
     std::unique_ptr<folly::IOBuf> data,
@@ -97,6 +204,30 @@ void MoQMi::writeVarint(
   } else {
     size += *res;
   }
+}
+
+std::ostream& operator<<(
+    std::ostream& os,
+    MoQMi::VideoH264AVCCWCPData const& v) {
+  auto metadataSize =
+      v.metadata != nullptr ? v.metadata->computeChainDataLength() : 0;
+  auto dataSize = v.data != nullptr ? v.data->computeChainDataLength() : 0;
+  os << "VideoH264. id: " << v.seqId << ", pts: " << v.pts << ", dts: " << v.dts
+     << ", timescale: " << v.timescale << ", duration: " << v.duration
+     << ", wallclock: " << v.wallclock << ", metadata length: " << metadataSize
+     << ", data length: " << dataSize;
+  return os;
+}
+
+std::ostream& operator<<(
+    std::ostream& os,
+    MoQMi::AudioAACMP4LCWCPData const& a) {
+  auto dataSize = a.data != nullptr ? a.data->computeChainDataLength() : 0;
+  os << "AudioAAC. id: " << a.seqId << ", pts: " << a.pts
+     << ", sampleFreq: " << a.sampleFreq << ", numChannels: " << a.numChannels
+     << ", timescale: " << a.timescale << ", duration: " << a.duration
+     << ", wallclock: " << a.wallclock << ", data length: " << dataSize;
+  return os;
 }
 
 } // namespace moxygen

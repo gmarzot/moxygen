@@ -59,7 +59,7 @@ class MoQSession : public MoQControlCodec::ControlCallback,
 
   void start();
   void drain();
-  void close(folly::Optional<SessionCloseErrorCode> error = folly::none);
+  void close(SessionCloseErrorCode error);
 
   folly::coro::Task<ServerSetup> setup(ClientSetup setup);
   folly::coro::Task<void> clientSetupComplete() {
@@ -203,22 +203,22 @@ class MoQSession : public MoQControlCodec::ControlCallback,
     PublisherImpl(
         MoQSession* session,
         SubscribeID subscribeID,
-        Priority priority,
+        Priority subPriority,
         GroupOrder groupOrder)
         : session_(session),
           subscribeID_(subscribeID),
-          priority_(priority),
+          subPriority_(subPriority),
           groupOrder_(groupOrder) {}
     virtual ~PublisherImpl() = default;
 
     SubscribeID subscribeID() const {
       return subscribeID_;
     }
-    uint8_t priority() const {
-      return priority_;
+    uint8_t subPriority() const {
+      return subPriority_;
     }
-    void setPriority(uint8_t priority) {
-      priority_ = priority;
+    void setSubPriority(uint8_t subPriority) {
+      subPriority_ = subPriority;
     }
     void setGroupOrder(GroupOrder groupOrder) {
       groupOrder_ = groupOrder;
@@ -243,16 +243,19 @@ class MoQSession : public MoQControlCodec::ControlCallback,
 
     MoQSession* session_{nullptr};
     SubscribeID subscribeID_;
-    uint8_t priority_;
+    uint8_t subPriority_;
     GroupOrder groupOrder_;
   };
 
   void onNewUniStream(proxygen::WebTransport::StreamReadHandle* rh) override;
   void onNewBidiStream(proxygen::WebTransport::BidiStreamHandle bh) override;
   void onDatagram(std::unique_ptr<folly::IOBuf> datagram) override;
-  void onSessionEnd(folly::Optional<uint32_t>) override {
-    XLOG(DBG1) << __func__ << " sess=" << this;
-    close();
+  void onSessionEnd(folly::Optional<uint32_t> err) override {
+    XLOG(DBG1) << __func__ << "err="
+               << (err ? folly::to<std::string>(*err) : std::string("none"))
+               << " sess=" << this;
+    // The peer closed us, but we can close with NO_ERROR
+    close(SessionCloseErrorCode::NO_ERROR);
   }
 
   class TrackReceiveStateBase;

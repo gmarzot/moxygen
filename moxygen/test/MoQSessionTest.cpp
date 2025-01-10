@@ -6,6 +6,7 @@
 
 #include "moxygen/MoQSession.h"
 #include <folly/coro/BlockingWait.h>
+#include <folly/futures/ThreadWheelTimekeeper.h>
 #include <folly/io/async/EventBase.h>
 #include <folly/portability/GMock.h>
 #include <folly/portability/GTest.h>
@@ -206,7 +207,7 @@ void MoQSessionTest::setupMoQSession() {
 
 TEST_F(MoQSessionTest, Setup) {
   setupMoQSession();
-  clientSession_->close();
+  clientSession_->close(SessionCloseErrorCode::NO_ERROR);
 }
 
 MATCHER_P(HasChainDataLengthOf, n, "") {
@@ -217,14 +218,13 @@ namespace {
 // GCC barfs when using struct brace initializers inside a coroutine?
 // Helper function to make a Fetch request
 Fetch getFetch(AbsoluteLocation start, AbsoluteLocation end) {
-  return Fetch{
+  return Fetch(
       SubscribeID(0),
       FullTrackName{TrackNamespace{{"foo"}}, "bar"},
       0,
       GroupOrder::OldestFirst,
       start,
-      end,
-      {}};
+      end);
 }
 } // namespace
 
@@ -244,7 +244,7 @@ TEST_F(MoQSessionTest, Fetch) {
     auto res = co_await session->fetch(getFetch({0, 0}, {0, 1}), fetchCallback);
     EXPECT_FALSE(res.hasError());
     co_await baton;
-    session->close();
+    session->close(SessionCloseErrorCode::NO_ERROR);
   };
   EXPECT_CALL(serverControl, onFetch(testing::_))
       .WillOnce(testing::Invoke([this](Fetch fetch) {
@@ -295,7 +295,7 @@ TEST_F(MoQSessionTest, FetchCleanupFromStreamFin) {
           return folly::unit;
         }));
     co_await baton;
-    session->close();
+    session->close(SessionCloseErrorCode::NO_ERROR);
   };
   EXPECT_CALL(serverControl, onFetch(testing::_))
       .WillOnce(testing::Invoke([this, &fetchPub](Fetch fetch) {
@@ -324,7 +324,7 @@ TEST_F(MoQSessionTest, FetchError) {
     EXPECT_EQ(
         res.error().errorCode,
         folly::to_underlying(FetchErrorCode::INVALID_RANGE));
-    session->close();
+    session->close(SessionCloseErrorCode::NO_ERROR);
   };
   f(clientSession_).scheduleOn(&eventBase_).start();
   eventBase_.loop();
@@ -362,7 +362,7 @@ TEST_F(MoQSessionTest, FetchCancel) {
         /*finFetch=*/true);
     // publish after fetchCancel fails
     EXPECT_TRUE(res2.hasError());
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   };
   EXPECT_CALL(serverControl, onFetch(testing::_))
       .WillOnce(testing::Invoke([this, &fetchPub](Fetch fetch) {
@@ -399,7 +399,7 @@ TEST_F(MoQSessionTest, FetchEarlyCancel) {
     EXPECT_FALSE(res.hasError());
     // TODO: this no-ops right now so there's nothing to verify
     clientSession->fetchCancel({subscribeID});
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   };
   EXPECT_CALL(serverControl, onFetch(testing::_))
       .WillOnce(testing::Invoke([this](Fetch fetch) {
@@ -435,11 +435,12 @@ TEST_F(MoQSessionTest, FetchBadLength) {
           contract.first.setValue();
           return folly::Expected<folly::Unit, MoQPublishError>(folly::unit);
         });
+    folly::EventBaseThreadTimekeeper tk(*session->getEventBase());
     EXPECT_THROW(
         co_await folly::coro::timeout(
-            std::move(contract.second), std::chrono::milliseconds(100)),
+            std::move(contract.second), std::chrono::milliseconds(100), &tk),
         folly::FutureTimeout);
-    session->close();
+    session->close(SessionCloseErrorCode::NO_ERROR);
   };
   EXPECT_CALL(serverControl, onFetch(testing::_))
       .WillOnce(testing::Invoke([this](Fetch fetch) {
@@ -519,6 +520,7 @@ TEST_F(MoQSessionTest, FetchBadID) {
   eventBase_.loopOnce();
   serverSession_->fetchError({SubscribeID(2000), 500, "local write failed"});
   eventBase_.loopOnce();
+  serverSession_->close(SessionCloseErrorCode::NO_ERROR);
   // These are no-ops
 }
 
@@ -558,7 +560,7 @@ TEST_F(MoQSessionTest, SetupTimeout) {
     setup.supportedVersions.push_back(kVersionDraftCurrent);
     auto serverSetup = co_await co_awaitTry(clientSession->setup(setup));
     EXPECT_TRUE(serverSetup.hasException());
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   }(clientSession_)
                                                        .scheduleOn(&eventBase_)
                                                        .start();
@@ -573,7 +575,7 @@ TEST_F(MoQSessionTest, InvalidVersion) {
     setup.supportedVersions.push_back(0xfaceb001);
     auto serverSetup = co_await co_awaitTry(clientSession->setup(setup));
     EXPECT_TRUE(serverSetup.hasException());
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   }(clientSession_)
                                                        .scheduleOn(&eventBase_)
                                                        .start();
@@ -589,7 +591,7 @@ TEST_F(MoQSessionTest, InvalidServerVersion) {
     setup.supportedVersions.push_back(kVersionDraftCurrent);
     auto serverSetup = co_await co_awaitTry(clientSession->setup(setup));
     EXPECT_TRUE(serverSetup.hasException());
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   }(clientSession_)
                                                        .scheduleOn(&eventBase_)
                                                        .start();
@@ -605,7 +607,7 @@ TEST_F(MoQSessionTest, ServerSetupFail) {
     setup.supportedVersions.push_back(kVersionDraftCurrent);
     auto serverSetup = co_await co_awaitTry(clientSession->setup(setup));
     EXPECT_TRUE(serverSetup.hasException());
-    clientSession->close();
+    clientSession->close(SessionCloseErrorCode::NO_ERROR);
   }(clientSession_)
                                                        .scheduleOn(&eventBase_)
                                                        .start();

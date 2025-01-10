@@ -62,7 +62,9 @@ enum class SubscribeDoneStatusCode : uint32_t {
   TRACK_ENDED = 0x3,
   SUBSCRIPTION_ENDED = 0x4,
   GOING_AWAY = 0x5,
-  EXPIRED = 0x6
+  EXPIRED = 0x6,
+  //
+  SESSION_CLOSED = std::numeric_limits<uint32_t>::max()
 };
 
 enum class TrackStatusCode : uint32_t {
@@ -120,10 +122,8 @@ enum class FrameType : uint64_t {
 
 enum class StreamType : uint64_t {
   OBJECT_DATAGRAM = 1,
-  STREAM_HEADER_TRACK = 0x2,
   STREAM_HEADER_SUBGROUP = 0x4,
   FETCH_HEADER = 0x5,
-  CONTROL = 100000000
 };
 
 std::ostream& operator<<(std::ostream& os, FrameType type);
@@ -178,8 +178,6 @@ folly::Expected<ClientSetup, ErrorCode> parseClientSetup(
 folly::Expected<ServerSetup, ErrorCode> parseServerSetup(
     folly::io::Cursor& cursor,
     size_t length) noexcept;
-
-enum class ForwardPreference : uint8_t { Track, Subgroup, Datagram, Fetch };
 
 enum class ObjectStatus : uint64_t {
   NORMAL = 0,
@@ -263,7 +261,6 @@ struct ObjectHeader {
   uint64_t subgroup{0}; // meaningless for Track and Datagram
   uint64_t id;
   uint8_t priority;
-  ForwardPreference forwardPreference;
   ObjectStatus status{ObjectStatus::NORMAL};
   folly::Optional<uint64_t> length{folly::none};
 };
@@ -278,9 +275,8 @@ folly::Expected<ObjectHeader, ErrorCode> parseObjectHeader(
 folly::Expected<uint64_t, ErrorCode> parseFetchHeader(
     folly::io::Cursor& cursor) noexcept;
 
-folly::Expected<ObjectHeader, ErrorCode> parseStreamHeader(
-    folly::io::Cursor& cursor,
-    StreamType streamType) noexcept;
+folly::Expected<ObjectHeader, ErrorCode> parseSubgroupHeader(
+    folly::io::Cursor& cursor) noexcept;
 
 folly::Expected<ObjectHeader, ErrorCode> parseMultiObjectHeader(
     folly::io::Cursor& cursor,
@@ -580,6 +576,22 @@ folly::Expected<MaxSubscribeId, ErrorCode> parseMaxSubscribeId(
     size_t length) noexcept;
 
 struct Fetch {
+  Fetch() = default;
+  Fetch(
+      SubscribeID su,
+      FullTrackName n,
+      uint8_t p,
+      GroupOrder g,
+      AbsoluteLocation st,
+      AbsoluteLocation e,
+      std::vector<TrackRequestParameter> pa = {})
+      : subscribeID(su),
+        fullTrackName(std::move(n)),
+        priority(p),
+        groupOrder(g),
+        start(st),
+        end(e),
+        params(std::move(pa)) {}
   SubscribeID subscribeID;
   FullTrackName fullTrackName;
   uint8_t priority;
@@ -667,12 +679,22 @@ WriteResult writeServerSetup(
     folly::IOBufQueue& writeBuf,
     const ServerSetup& serverSetup) noexcept;
 
+WriteResult writeSubgroupHeader(
+    folly::IOBufQueue& writeBuf,
+    const ObjectHeader& objectHeader) noexcept;
+
+WriteResult writeFetchHeader(
+    folly::IOBufQueue& writeBuf,
+    SubscribeID subscribeID) noexcept;
+
 WriteResult writeStreamHeader(
     folly::IOBufQueue& writeBuf,
+    StreamType streamType,
     const ObjectHeader& objectHeader) noexcept;
 
 WriteResult writeObject(
     folly::IOBufQueue& writeBuf,
+    StreamType streamType,
     const ObjectHeader& objectHeader,
     std::unique_ptr<folly::IOBuf> objectPayload) noexcept;
 

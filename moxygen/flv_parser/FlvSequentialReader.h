@@ -11,70 +11,10 @@
 #include <folly/logging/xlog.h>
 #include "moxygen/flv_parser/FlvReader.h"
 
-namespace moxygen {
+namespace moxygen::flv {
 
 class FlvSequentialReader {
  public:
-  // Audio ASC sampling frequency mapping
-  const uint32_t kAscFreqSamplingIndexMapping[16]{
-      96000, // 0
-      88200, // 1
-      64000, // 2
-      48000, // 3
-      44100, // 4
-      32000, // 5
-      24000, // 6
-      22050, // 7
-      16000, // 8
-      12000, // 9
-      11025, // 10
-      8000,  // 11
-      7350,  // 12
-      13,    // 13 - reserved
-      14,    // 14 - reserved
-      15,    // 15 - escape value
-  };
-
-  // Helper class to read bits from a buffer
-  class BitReader {
-   public:
-    explicit BitReader(std::unique_ptr<folly::IOBuf> data)
-        : data_(std::move(data)) {
-      XLOG(INFO) << __func__;
-    }
-    ~BitReader() {}
-
-    uint64_t getNextBits(uint8_t numBits) {
-      uint64_t result = 0;
-
-      if (numBits > 64) {
-        throw std::runtime_error("Can not read more than 64 bits");
-      }
-
-      for (uint64_t i = 0; i < numBits; i++) {
-        uint64_t bytePos = bitOffset_ / 8;
-        uint64_t bitPos = bitOffset_ % 8;
-        if (bytePos >= data_->computeChainDataLength()) {
-          throw std::runtime_error("Can not read more bits, short");
-        }
-        uint8_t tmp = ((uint8_t)data_->data()[bytePos]) &
-            (uint8_t)std::pow(2, 7 - bitPos);
-        result = result << 1;
-        if (tmp > 0) {
-          result |= 1;
-        } else {
-          result |= 0;
-        }
-        bitOffset_++;
-      }
-      return result;
-    }
-
-   private:
-    std::unique_ptr<folly::IOBuf> data_;
-    uint64_t bitOffset_{0};
-  };
-
   // FLV timebase
   const uint32_t kFlvTimeScale = 1000;
 
@@ -114,6 +54,27 @@ class FlvSequentialReader {
           numChannels(0),
           isIdr{false},
           isEOF{false} {}
+    explicit MediaItem(const MediaItem& m)
+        : data(nullptr),
+          metadata(nullptr),
+          type(m.type),
+          id(m.id),
+          pts(m.pts),
+          dts(m.dts),
+          timescale(m.timescale),
+          duration(m.duration),
+          wallclock(m.wallclock),
+          sampleFreq(m.sampleFreq),
+          numChannels(m.numChannels),
+          isIdr(m.isIdr),
+          isEOF(m.isEOF) {}
+
+    std::unique_ptr<MediaItem> clone() {
+      auto clone = std::make_unique<MediaItem>(*this);
+      clone->data = data != nullptr ? data->clone() : nullptr;
+      clone->metadata = metadata != nullptr ? metadata->clone() : nullptr;
+      return clone;
+    }
   };
 
   explicit FlvSequentialReader(const std::string& file_path)
@@ -127,19 +88,15 @@ class FlvSequentialReader {
     XLOG(INFO) << __func__;
   }
 
-  std::shared_ptr<MediaItem> getNextItem();
+  std::unique_ptr<MediaItem> getNextItem();
 
  private:
-  bool parseAscHeader(std::unique_ptr<folly::IOBuf>);
-
   FlvReader reader_;
   std::string file_path_;
 
   std::unique_ptr<folly::IOBuf> avcDecoderRecord_;
 
-  folly::Optional<uint32_t> aot_;
-  folly::Optional<uint32_t> sampleFreq_;
-  folly::Optional<uint32_t> numChannels_;
+  AscHeaderData ascHeader_;
 
   uint64_t videoFrameId_;
   uint64_t audioFrameId_;
@@ -148,4 +105,4 @@ class FlvSequentialReader {
   folly::Optional<uint64_t> lastAudioPts_;
 };
 
-} // namespace moxygen
+} // namespace moxygen::flv

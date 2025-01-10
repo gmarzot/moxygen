@@ -62,7 +62,7 @@ folly::coro::Task<void> MoQChatClient::run() noexcept {
                  << " reason=" << sa.error().reasonPhrase;
     }
   } catch (const std::exception& ex) {
-    XLOG(ERR) << ex.what();
+    XLOG(ERR) << folly::exceptionStr(ex);
     co_return;
   }
   XLOG(INFO) << __func__ << " done";
@@ -157,7 +157,7 @@ void MoQChatClient::publishLoop() {
     moqClient_.getEventBase()->runInEventBaseThread([this, input] {
       if (input == "/leave") {
         XLOG(INFO) << "Leaving chat";
-        moqClient_.moqSession_->close();
+        moqClient_.moqSession_->close(SessionCloseErrorCode::NO_ERROR);
         moqClient_.moqSession_.reset();
       } else if (chatSubscribeID_) {
         if (publisher_) {
@@ -167,7 +167,6 @@ void MoQChatClient::publishLoop() {
                /*subgroup=*/0,
                /*id=*/0,
                /*pri=*/0,
-               ForwardPreference::Subgroup,
                ObjectStatus::NORMAL},
               folly::IOBuf::copyBuffer(input));
         }

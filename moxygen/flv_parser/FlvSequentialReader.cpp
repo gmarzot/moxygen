@@ -8,21 +8,27 @@
 #include <folly/logging/xlog.h>
 #include <chrono>
 
-namespace moxygen {
+namespace moxygen::flv {
 
-std::shared_ptr<FlvSequentialReader::MediaItem>
+std::unique_ptr<FlvSequentialReader::MediaItem>
 FlvSequentialReader::getNextItem() {
-  std::shared_ptr<MediaItem> ret;
+  std::unique_ptr<MediaItem> ret;
   XLOG(DBG1) << __func__;
 
   while (!ret) {
     try {
-      std::shared_ptr<MediaItem> locaItem = std::make_shared<MediaItem>();
+      std::unique_ptr<MediaItem> locaItem = std::make_unique<MediaItem>();
       auto tag = reader_.readNextTag();
-      if (std::get<0>(tag) == nullptr) {
-        XLOG(INFO) << "End of flv file";
-        locaItem->isEOF = true;
-        return locaItem;
+      if (tag.index() == FlvTagTypeIndex::FLV_TAG_INDEX_READCMD) {
+        auto readsCmd = std::get<flv::FlvReadCmd>(tag);
+        if (readsCmd == flv::FlvReadCmd::FLV_EOF) {
+          XLOG(INFO) << "End of flv file";
+          locaItem->isEOF = true;
+          return locaItem;
+        } else if (readsCmd == flv::FlvReadCmd::FLV_UNKNOWN_TAG) {
+          XLOG(WARNING) << "Unknown tag";
+          return locaItem;
+        }
       }
 
       // Set FLV timebase
@@ -33,12 +39,13 @@ FlvSequentialReader::getNextItem() {
               std::chrono::system_clock::now().time_since_epoch())
               .count();
 
-      if (std::get<1>(tag) != nullptr) {
+      if (tag.index() == FlvTagTypeIndex::FLV_TAG_INDEX_VIDEO) {
         XLOG(DBG1) << "Read tag VIDEO at frame " << videoFrameId_;
         locaItem->type = MediaType::VIDEO;
         locaItem->id = videoFrameId_;
 
-        auto videoTag = std::move(std::get<1>(tag));
+        auto videoTag =
+            std::move(std::get<FlvTagTypeIndex::FLV_TAG_INDEX_VIDEO>(tag));
 
         // Not B frames for now
         locaItem->pts = locaItem->dts = videoTag->timestamp;
@@ -79,14 +86,15 @@ FlvSequentialReader::getNextItem() {
           videoFrameId_++;
 
           // Return the item
-          ret = locaItem;
+          ret = std::move(locaItem);
         }
-      } else if (std::get<2>(tag) != nullptr) {
+      } else if (tag.index() == FlvTagTypeIndex::FLV_TAG_INDEX_AUDIO) {
         XLOG(DBG1) << "Read tag AUDIO at frame " << audioFrameId_;
         locaItem->type = MediaType::AUDIO;
         locaItem->id = audioFrameId_;
 
-        auto audioTag = std::move(std::get<2>(tag));
+        auto audioTag =
+            std::move(std::get<FlvTagTypeIndex::FLV_TAG_INDEX_AUDIO>(tag));
 
         if (audioTag->soundFormat != 10) {
           XLOG(WARN) << "Not supported audio format codecID: "
@@ -109,35 +117,29 @@ FlvSequentialReader::getNextItem() {
 
         if (audioTag->aacPacketType == 0x0) {
           // Update AAC metadata (ASC sequence header detected)
-          XLOG(INFO) << "Saving new ASC header, size: " << audioTag->size;
-          if (!parseAscHeader(std::move(audioTag->data))) {
-            XLOG(ERR) << "Failed to parse ASC header";
-          } else {
-            XLOG(INFO) << "Parsed ASC header, aot: " << aot_.value_or(0)
-                       << " sampleFreq: " << sampleFreq_.value_or(0)
-                       << ", numChannels: " << numChannels_.value_or(0);
+          XLOG(DBG1) << "Saving new ASC header, size: " << audioTag->size;
+          ascHeader_ = parseAscHeader(std::move(audioTag->data));
+          if (!ascHeader_.valid) {
+            XLOG(ERR) << "ASC header is corrupted at: " << audioTag->timestamp;
+            continue;
           }
+          XLOG(INFO) << "Parsed ASC header " << ascHeader_;
         } else {
-          if (!numChannels_ || !sampleFreq_) {
-            XLOG(WARN) << "numChannels or sampleFreq not set";
-          } else {
-            locaItem->sampleFreq = sampleFreq_.value();
-            locaItem->numChannels = numChannels_.value();
-          }
+          locaItem->sampleFreq = ascHeader_.sampleFreq;
+          locaItem->numChannels = ascHeader_.channels;
+
           locaItem->isIdr = true;
           locaItem->data = std::move(audioTag->data);
           audioFrameId_++;
 
           // Return the item
-          ret = locaItem;
+          ret = std::move(locaItem);
         }
-      } else if (std::get<0>(tag)->type == 18) {
+      } else if (tag.index() == FlvTagTypeIndex::FLV_TAG_INDEX_SCRIPT) {
         XLOG(DBG1) << "Read tag SCRIPTDATAOBJECT";
-      } else {
-        XLOG(WARNING) << "Read UNKNOWN tag " << std::get<0>(tag)->type;
       }
     } catch (std::exception& ex) {
-      XLOG(ERR) << "Error processing tag. Ex: " << ex.what();
+      XLOG(ERR) << "Error processing tag. Ex: " << folly::exceptionStr(ex);
       ret = nullptr;
       break;
     }
@@ -146,32 +148,4 @@ FlvSequentialReader::getNextItem() {
   return ret;
 }
 
-bool FlvSequentialReader::parseAscHeader(std::unique_ptr<folly::IOBuf> buf) {
-  try {
-    if (buf == nullptr) {
-      throw std::runtime_error("ASC header is nullptr");
-    }
-    FlvSequentialReader::BitReader br(std::move(buf));
-
-    uint32_t aot = br.getNextBits(5); // audioObjectType
-    if (aot == 31) {
-      aot_ = 32 + br.getNextBits(6);
-    } else {
-      aot_ = aot;
-    }
-
-    uint8_t sampleFreqIndex = br.getNextBits(4); // sampleFrequencyIndex
-    if (sampleFreqIndex == 0x0f) {
-      sampleFreq_ = br.getNextBits(24); // sampleFrequency
-    } else {
-      sampleFreq_ = kAscFreqSamplingIndexMapping[sampleFreqIndex];
-    }
-    numChannels_ = br.getNextBits(4); // numChannels
-  } catch (std::exception& ex) {
-    XLOG(ERR) << "Failed parsing ASC header: " << ex.what();
-    return false;
-  }
-
-  return true;
-}
-} // namespace moxygen
+} // namespace moxygen::flv

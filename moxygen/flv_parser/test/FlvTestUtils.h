@@ -6,8 +6,7 @@
 
 #pragma once
 
-#include <folly/logging/xlog.h>
-#include <folly/portability/GTest.h>
+#include <folly/String.h>
 
 namespace moxygen::test {
 

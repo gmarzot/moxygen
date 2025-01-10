@@ -155,13 +155,13 @@ class MoQTextClient {
               fetchTextHandler_ = std::make_shared<ObjectReceiver>(
                   ObjectReceiver::FETCH, &textHandler_);
               auto fetchTrack = co_await moqClient_.moqSession_->fetch(
-                  {SubscribeID(0),
-                   sub.fullTrackName,
-                   sub.priority,
-                   sub.groupOrder,
-                   range.start,
-                   fetchEnd,
-                   {}},
+                  Fetch(
+                      SubscribeID(0),
+                      sub.fullTrackName,
+                      sub.priority,
+                      sub.groupOrder,
+                      range.start,
+                      fetchEnd),
                   fetchTextHandler_);
               if (fetchTrack.hasError()) {
                 XLOG(ERR) << "Fetch failed err=" << fetchTrack.error().errorCode
@@ -190,7 +190,7 @@ class MoQTextClient {
       }
       moqClient_.moqSession_->drain();
     } catch (const std::exception& ex) {
-      XLOG(ERR) << ex.what();
+      XLOG(ERR) << folly::exceptionStr(ex);
       co_return;
     }
     co_await textHandler_.baton;
@@ -201,7 +201,7 @@ class MoQTextClient {
     textHandler_.baton.post();
     // TODO: maybe need fetchCancel + fetchTextHandler_.baton.post()
     moqClient_.moqSession_->unsubscribe({subscribeID_});
-    moqClient_.moqSession_->close();
+    moqClient_.moqSession_->close(SessionCloseErrorCode::NO_ERROR);
   }
 
   folly::coro::Task<void> controlReadLoop() {
