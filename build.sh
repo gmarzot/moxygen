@@ -665,7 +665,7 @@ make -j "$JOBS"
 make install
 
 # Optionally setup Python environment (pytest cython aioquic)
-if [ "$WITH_PYTHON_ENV" == true ] || true; then
+if [ "$WITH_PYTHON_ENV" == true ]; then
   setup_python_env
 fi
 
