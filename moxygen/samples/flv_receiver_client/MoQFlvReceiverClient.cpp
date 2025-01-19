@@ -11,6 +11,7 @@
 #include <folly/init/Init.h>
 #include <folly/io/async/AsyncSignalHandler.h>
 #include <signal.h>
+#include "moxygen/dejitter/DeJitter.h"
 #include "moxygen/flv_parser/FlvWriter.h"
 #include "moxygen/moq_mi/MoQMi.h"
 
@@ -28,8 +29,13 @@ DEFINE_string(video_track_name, "video0", "Video track Name");
 DEFINE_string(audio_track_name, "audio0", "Track Name");
 DEFINE_int32(connect_timeout, 1000, "Connect timeout (ms)");
 DEFINE_int32(transaction_timeout, 120, "Transaction timeout (s)");
+DEFINE_int32(
+    dejitter_buffer_size_ms,
+    300,
+    "Dejitter buffer size in ms (this translates to added latency)");
 DEFINE_bool(quic_transport, false, "Use raw QUIC transport");
 DEFINE_bool(fetch, false, "Use fetch rather than subscribe");
+DEFINE_string(auth, "secret", "MOQ subscription auth string");
 
 namespace {
 using namespace moxygen;
@@ -40,7 +46,7 @@ class TrackType {
 
   explicit TrackType(TrackType::MediaType mediaType) : mediaType_(mediaType) {}
 
-  std::string toStr() {
+  std::string toStr() const {
     if (mediaType_ == TrackType::MediaType::Audio) {
       return "audio";
     } else if (mediaType_ == TrackType::MediaType::Video) {
@@ -150,36 +156,84 @@ class FlvWriterShared : flv::FlvWriter {
 
 class TrackReceiverHandler : public ObjectReceiverCallback {
  public:
-  explicit TrackReceiverHandler(TrackType::MediaType mediaType)
-      : trackMediaType_(TrackType(mediaType)) {}
+  explicit TrackReceiverHandler(
+      TrackType::MediaType mediaType,
+      uint32_t dejitterBufferSizeMs)
+      : trackMediaType_(TrackType(mediaType)),
+        dejitterBufferSizeMs_(dejitterBufferSizeMs) {}
   ~TrackReceiverHandler() override = default;
   FlowControlState onObject(const ObjectHeader&, Payload payload) override {
-    // TODO: Add jitter buffer to fix out of order packets, we will need latency
-    // parameter to determine how much to buffer we want
     if (payload) {
+      std::tuple<
+          folly::Optional<MoQMi::MoqMiTag>,
+          dejitter::DeJitter<MoQMi::MoqMiTag>::GapInfo>
+          deJitterData;
+
       auto payloadSize = payload->computeChainDataLength();
       XLOG(DBG1) << trackMediaType_.toStr()
                  << " Received payload. Size=" << payloadSize;
 
       auto payloadDecodedData = MoQMi::fromObjectPayload(std::move(payload));
+      logData(payloadDecodedData);
       if (payloadDecodedData.index() ==
-          MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC) {
-        XLOG(DBG1)
-            << trackMediaType_.toStr() << " payloadDecodedData: "
-            << *std::get<
-                   MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC>(
-                   payloadDecodedData);
-      } else if (
+              MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC ||
           payloadDecodedData.index() ==
-          MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC) {
-        XLOG(DBG1)
-            << trackMediaType_.toStr() << " payloadDecodedData: "
-            << *std::get<
-                   MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC>(
-                   payloadDecodedData);
+              MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC) {
+        // Create deJitter if not already created
+        if (!deJitter_) {
+          deJitter_ = std::make_unique<dejitter::DeJitter<MoQMi::MoqMiTag>>(
+              dejitterBufferSizeMs_);
+        }
+
+        // Dejitter frames
+        auto seqId = getSeqId(payloadDecodedData);
+        if (!seqId) {
+          XLOG(ERR) << trackMediaType_.toStr()
+                    << " No seqId found skipping frame";
+        } else {
+          auto sDurMs = getDurationMs(payloadDecodedData);
+          if (!sDurMs.has_value()) {
+            XLOG(WARN)
+                << trackMediaType_.toStr()
+                << " No duration found, this affects dejitter buffer size, assuming 0ms";
+          }
+          deJitterData = deJitter_->insertItem(
+              seqId.value(), sDurMs.value_or(0), std::move(payloadDecodedData));
+          if (std::get<1>(deJitterData).gapType ==
+              dejitter::DeJitter<MoQMi::MoqMiTag>::GapType::FILLING_BUFFER) {
+            XLOG(DBG1) << trackMediaType_.toStr()
+                       << " Filling buffer for seqId: " << seqId.value();
+          } else if (
+              std::get<1>(deJitterData).gapType ==
+              dejitter::DeJitter<MoQMi::MoqMiTag>::GapType::ARRIVED_LATE) {
+            XLOG(WARN) << trackMediaType_.toStr()
+                       << " Dropped, because arrived late. seqId: "
+                       << seqId.value();
+          } else if (
+              std::get<1>(deJitterData).gapType ==
+              dejitter::DeJitter<MoQMi::MoqMiTag>::GapType::GAP) {
+            XLOG(WARN) << trackMediaType_.toStr()
+                       << " GAP PASSED to decoder, size: "
+                       << std::get<1>(deJitterData).gapSize
+                       << ", seqId: " << seqId.value();
+          } else if (
+              std::get<1>(deJitterData).gapType ==
+              dejitter::DeJitter<MoQMi::MoqMiTag>::GapType::INTERNAL_ERROR) {
+            XLOG(ERR) << trackMediaType_.toStr()
+                      << " INTERNAL ERROR dejittering, seqId: "
+                      << seqId.value();
+          } else {
+            XLOG_EVERY_N(INFO, 60)
+                << trackMediaType_.toStr() << " For seqId: " << seqId.value()
+                << ", Dejitter size: " << deJitter_->size() << "("
+                << deJitter_->sizeMs() << "ms)";
+          }
+        }
       }
-      if (flvw_) {
-        if (flvw_->writeMoqMiPayload(std::move(payloadDecodedData))) {
+
+      if (flvw_ && std::get<0>(deJitterData).has_value()) {
+        if (flvw_->writeMoqMiPayload(
+                std::move(std::get<0>(deJitterData).value()))) {
           XLOG(DBG1) << trackMediaType_.toStr() << " Wrote payload to output";
         } else {
           XLOG(WARNING) << trackMediaType_.toStr() << " Payload write failed";
@@ -209,8 +263,76 @@ class TrackReceiverHandler : public ObjectReceiverCallback {
   }
 
  private:
-  TrackType trackMediaType_;
+  void logData(const MoQMi::MoqMiTag& payloadDecodedData) const {
+    if (payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC) {
+      XLOG(DBG1)
+          << trackMediaType_.toStr() << " payloadDecodedData: "
+          << *std::get<
+                 MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC>(
+                 payloadDecodedData);
+    } else if (
+        payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC) {
+      XLOG(DBG1)
+          << trackMediaType_.toStr() << " payloadDecodedData: "
+          << *std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC>(
+                 payloadDecodedData);
+    }
+  }
+
+  folly::Optional<uint64_t> getSeqId(
+      const MoQMi::MoqMiTag& payloadDecodedData) const {
+    if (payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC) {
+      return std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC>(
+                 payloadDecodedData)
+          ->seqId;
+    } else if (
+        payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC) {
+      return std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC>(
+                 payloadDecodedData)
+          ->seqId;
+    }
+    return folly::none;
+  }
+
+  folly::Optional<uint64_t> getDurationMs(
+      const MoQMi::MoqMiTag& payloadDecodedData) const {
+    folly::Optional<uint64_t> dur;
+    folly::Optional<uint64_t> timeScale;
+
+    if (payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC) {
+      dur = std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC>(
+                payloadDecodedData)
+                ->duration;
+      timeScale =
+          std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_VIDEO_H264_AVC>(
+              payloadDecodedData)
+              ->timescale;
+    } else if (
+        payloadDecodedData.index() ==
+        MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC) {
+      dur = std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC>(
+                payloadDecodedData)
+                ->duration;
+      timeScale =
+          std::get<MoQMi::MoqMITagTypeIndex::MOQMI_TAG_INDEX_AUDIO_AAC_LC>(
+              payloadDecodedData)
+              ->timescale;
+    }
+    if (!dur.has_value() || !timeScale.has_value()) {
+      return folly::none;
+    }
+    return dur.value() * 1000 / timeScale.value();
+  }
+
   std::shared_ptr<FlvWriterShared> flvw_;
+  TrackType trackMediaType_;
+  std::unique_ptr<dejitter::DeJitter<MoQMi::MoqMiTag>> deJitter_;
+  uint32_t dejitterBufferSizeMs_;
 };
 
 class MoQFlvReceiverClient {
@@ -285,12 +407,14 @@ class MoQFlvReceiverClient {
                       << " code=" << trackVideo.error().errorCode
                       << " reason=" << trackVideo.error().reasonPhrase;
       }
+
       moqClient_.moqSession_->drain();
     } catch (const std::exception& ex) {
       XLOG(ERR) << ex.what();
       co_return;
     }
     co_await trackReceiverHandlerAudio_.baton;
+    co_await trackReceiverHandlerVideo_.baton;
     XLOG(INFO) << __func__ << " done";
   }
 
@@ -346,11 +470,13 @@ class MoQFlvReceiverClient {
   SubscribeID subscribeIDVideo_{0};
   std::string flvOutPath_;
   std::shared_ptr<FlvWriterShared> flvw_;
-  TrackReceiverHandler trackReceiverHandlerAudio_ =
-      TrackReceiverHandler(TrackType::MediaType::Audio);
+  TrackReceiverHandler trackReceiverHandlerAudio_ = TrackReceiverHandler(
+      TrackType::MediaType::Audio,
+      FLAGS_dejitter_buffer_size_ms);
   std::shared_ptr<ObjectReceiver> subRxHandlerAudio_;
-  TrackReceiverHandler trackReceiverHandlerVideo_ =
-      TrackReceiverHandler(TrackType::MediaType::Video);
+  TrackReceiverHandler trackReceiverHandlerVideo_ = TrackReceiverHandler(
+      TrackType::MediaType::Video,
+      FLAGS_dejitter_buffer_size_ms);
   std::shared_ptr<ObjectReceiver> subRxHandlerVideo_;
 };
 } // namespace
@@ -397,6 +523,7 @@ int main(int argc, char* argv[]) {
   const auto trackAliasAudio = 1;
   const auto subscribeIDVideo = 1;
   const auto trackAliasVideo = 2;
+
   flvReceiverClient
       .run(
           {subscribeIDAudio,
@@ -410,7 +537,9 @@ int main(int argc, char* argv[]) {
            LocationType::LatestObject,
            folly::none,
            folly::none,
-           {}},
+           {{folly::to_underlying(TrackRequestParamKey::AUTHORIZATION),
+             FLAGS_auth,
+             0}}},
           {subscribeIDVideo,
            trackAliasVideo,
            moxygen::FullTrackName(
@@ -422,7 +551,9 @@ int main(int argc, char* argv[]) {
            LocationType::LatestObject,
            folly::none,
            folly::none,
-           {}})
+           {{folly::to_underlying(TrackRequestParamKey::AUTHORIZATION),
+             FLAGS_auth,
+             0}}})
       .scheduleOn(&eventBase)
       .start()
       .via(&eventBase)

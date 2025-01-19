@@ -26,6 +26,9 @@ moqchatserver
 moqtextclient
 moqdateserver
 moqflvstreamerclient
+moqflvreceiverclient
+
+moxygen/**/*Tests
 
 .venv/
 .python-version
@@ -34,7 +37,4 @@ __pycache__/
 *.pyc
 .coverage
 
-moxygen/**/*Tests
 moxygen/test/python/build/
-
-
